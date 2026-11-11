@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 backend/src/substitution_engine.py
 ----------------------------------

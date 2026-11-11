@@ -332,6 +332,31 @@ with st.sidebar:
         st.caption("No active restrictions (Pantry neutral).")
 
     st.markdown("---")
+    st.markdown("#### 🕸️ Pipeline Engine")
+    st.caption("⚙️ **Architecture**: LangGraph StateGraph")
+    with st.expander("🔍 View LangGraph Graph Topology"):
+        st.markdown("""
+```mermaid
+graph TD
+    Start([Start]) --> Guardrail[Input Guardrails]
+    Guardrail -->|Blocked| End([End])
+    Guardrail -->|Proceed| Router[Intent Router]
+    Router -->|Analytics| Analytics[Analytics Engine]
+    Router -->|Matching| Matcher[Constraint Matcher]
+    Router -->|Substitution| SubEngine[Substitution Engine]
+    Router -->|Refinement| Refine[Constraint Refinement]
+    Router -->|Search| Search[Vector & Lexical Search]
+    Analytics --> Synthesis[Grounded LLM Synthesis]
+    Matcher --> Synthesis
+    SubEngine --> Synthesis
+    Refine --> Synthesis
+    Search --> Synthesis
+    Synthesis --> OutGuard[Output Guardrails]
+    OutGuard --> End
+```
+""")
+
+    st.markdown("---")
     st.markdown("### 📋 Quick Test Prompts")
     
     # Prompt presets

@@ -156,12 +156,22 @@ NOSH Recipe Intelligence
 4. **Quantity Sufficiency Notice:** Alerts users that pantry match verifies item presence only, not volumetric sufficiency.
 5. **Adversarial Injection Defense:** Neutralizes prompt-injection and jailbreak attempts.
 
-### 8. LangSmith Tracing & Observability ([`backend/src/pipeline.py`](backend/src/pipeline.py))
+### 8. LangGraph StateGraph Architecture ([`backend/src/pipeline.py`](backend/src/pipeline.py))
+- **Production State Machine:** Orchestrated using `langgraph.graph.StateGraph` with strongly typed `PipelineState` (`thread_id`, `accumulated_restrictions`, `intent`, `context_data`, `fallback_text`, `response`).
+- **Topological Graph Flow:**
+  - `guardrail_node`: Evaluates 5-pillar security checks and stops early via conditional edge `route_after_guardrail` if blocked.
+  - `intent_router_node`: Dispatches queries dynamically by conversational intent.
+  - **Domain Specialist Nodes:** Dedicated execution nodes for `analytics_node`, `matching_node`, `substitution_node`, `refinement_node`, and `search_node`.
+  - `synthesis_node`: Performs grounded LLM synthesis via Groq Cloud (`qwen/qwen3.8-27b`) or deterministic offline fallback.
+  - `output_guardrail_node`: Verifies medical safety disclaimers, portion notices, and dataset citations before `END`.
+- **Live Visual Graph:** Exposes `/api/pipeline/graph` in FastAPI and renders interactive Mermaid topologies directly in Streamlit.
+
+### 9. LangSmith Tracing & Observability ([`backend/src/pipeline.py`](backend/src/pipeline.py))
 - **Production Chain Tracing:** Instrumented using `@traceable(name="NOSH_Conversational_Pipeline", run_type="chain")` from the official `langsmith` SDK.
 - **Metadata Captured:** Every turn automatically streams the `thread_id`, user prompt, routing intent, LLM latencies, token usage, and structured card outputs.
 - **Zero-Friction Activation:** Works out of the box. Simply supply `LANGCHAIN_API_KEY` in `.env` and set `LANGCHAIN_TRACING_V2=true` to view execution traces on [smith.langchain.com](https://smith.langchain.com). If the key is not set, `@traceable` acts as a zero-overhead pass-through without exceptions.
 
-### 9. Persistent Conversation Memory & Thread State ([`backend/src/session_store.py`](backend/src/session_store.py))
+### 10. Persistent Conversation Memory & Thread State ([`backend/src/session_store.py`](backend/src/session_store.py))
 - **Storage Location:** `data_recipes/nosh_sessions.db` (Indexed SQLite file, requires zero external services or Docker).
 - **Thread Management (`thread_id`):** Aligns with modern LangChain and LangGraph conventions using unique `thread_id` identifiers (interchangeable with `session_id`).
 - **Memory Tables:**

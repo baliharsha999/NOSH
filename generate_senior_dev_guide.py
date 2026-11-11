@@ -850,7 +850,7 @@ HTML_CONTENT = """<!DOCTYPE html>
       <span class="fn-complexity">Time: Sub-15ms deterministic / ~1.5s with Groq LLM | Space: O(Turn)</span>
     </div>
     <div class="fn-body">
-      <p><strong>Purpose:</strong> Central multi-turn conversational orchestrator coordinating intent classification, persistent SQLite session state, engines, LangSmith tracing, and LLM synthesis.</p>
+      <p><strong>Purpose:</strong> Production-grade <code>langgraph.graph.StateGraph</code> execution engine coordinating input guardrails, intent routing, domain specialist nodes, persistent SQLite session state, LangSmith tracing, and grounded LLM synthesis.</p>
       <p><strong>Observability:</strong> Decorated with <code>@traceable(name="NOSH_Conversational_Pipeline", run_type="chain")</code> to stream execution traces, prompt inputs, latencies, and thread metadata to LangSmith.</p>
       <p><strong>Algorithmic Steps:</strong></p>
       <ol>

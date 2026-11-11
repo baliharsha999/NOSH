@@ -160,7 +160,7 @@ class NoshGuardrails:
         """
         Task 3 Guardrail: Attaches verified medical disclaimer to recipe substitutions.
         """
-        if is_substitution and MEDICAL_DISCLAIMER not in response_text:
+        if is_substitution and "Medical Safety Disclaimer" not in response_text:
             return f"{response_text}\n\n> ⚠️ *{MEDICAL_DISCLAIMER}*"
         return response_text
 

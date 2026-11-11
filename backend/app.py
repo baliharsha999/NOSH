@@ -25,15 +25,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-# Ensure backend/src is on sys.path
-SRC_DIR = Path(__file__).resolve().parent / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+# Ensure backend and backend/src are on sys.path
+BACKEND_DIR = Path(__file__).resolve().parent
+SRC_DIR = BACKEND_DIR / "src"
+ROOT_DIR = BACKEND_DIR.parent
 
-from ingestion import get_index_bundle
-from pipeline import NoshPipeline
-from matcher import MatchRequest
-from substitution_engine import SubstitutionRequest
+for _p in [str(SRC_DIR), str(BACKEND_DIR), str(ROOT_DIR)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+try:
+    from src.ingestion import get_index_bundle
+    from src.pipeline import NoshPipeline
+    from src.matcher import MatchRequest
+    from src.substitution_engine import SubstitutionRequest
+except ImportError:
+    from backend.src.ingestion import get_index_bundle
+    from backend.src.pipeline import NoshPipeline
+    from backend.src.matcher import MatchRequest
+    from backend.src.substitution_engine import SubstitutionRequest
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -133,6 +143,26 @@ def chat_endpoint(req: ChatRequest):
         "guardrail_triggered": result.get("guardrail_triggered"),
         "active_restrictions": list(session.accumulated_restrictions),
         "data": result.get("data")
+    }
+
+
+@app.get("/api/pipeline/graph", tags=["Pipeline Architecture"])
+def get_pipeline_graph():
+    """Returns the live LangGraph StateGraph topology in Mermaid format."""
+    return {
+        "framework": "LangGraph StateGraph",
+        "nodes": [
+            "guardrail_node",
+            "intent_router_node",
+            "analytics_node",
+            "matching_node",
+            "substitution_node",
+            "refinement_node",
+            "search_node",
+            "synthesis_node",
+            "output_guardrail_node"
+        ],
+        "mermaid_chart": pipeline.get_graph_mermaid()
     }
 
 

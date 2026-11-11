@@ -834,7 +834,7 @@
       <span class="fn-complexity">Time: Sub-15ms deterministic / ~1.5s with Groq LLM | Space: O(Turn)</span>
     </div>
     <div class="fn-body">
-      <p><strong>Purpose:</strong> Central multi-turn conversational orchestrator coordinating intent classification, persistent SQLite session state, engines, LangSmith tracing, and LLM synthesis.</p>
+      <p><strong>Purpose:</strong> Production-grade <code>langgraph.graph.StateGraph</code> execution engine coordinating input guardrails, intent routing, domain specialist nodes, persistent SQLite session state, LangSmith tracing, and grounded LLM synthesis.</p>
       <p><strong>Observability:</strong> Decorated with <code>@traceable(name="NOSH_Conversational_Pipeline", run_type="chain")</code> to stream execution traces, prompt inputs, latencies, and thread metadata to LangSmith.</p>
       <p><strong>Algorithmic Steps:</strong></p>
       <ol>
@@ -870,26 +870,6 @@
         <li><code>save_turn(...)</code>: Atomically inserts turn dialogue and updates thread timestamps &amp; active constraints.</li>
         <li><code>load_turn_history(thread_id)</code>: Loads all past turns in chronological order for conversation resumption.</li>
         <li><code>list_threads(limit)</code>: Returns active threads with turn counts and last updated timestamps.</li>
-      </ol>
-    </div>
-  </div>
-
-  <!-- VECTOR_STORE.PY -->
-  <h3>4.9 Module: <code>backend/src/vector_store.py</code></h3>
-
-  <div class="fn-card">
-    <div class="fn-header">
-      <span class="fn-name">FAISSRecipeVectorStore(dimension: int = 384)</span>
-      <span class="fn-complexity">Time: O(K · d) Inner Product Search | Space: O(Vectors · d)</span>
-    </div>
-    <div class="fn-body">
-      <p><strong>Purpose:</strong> Production FAISS Vector Database (<code>faiss-cpu</code>) implementing dense semantic cosine similarity over open-source 384-dimensional embeddings (aligned with <code>sentence-transformers/all-MiniLM-L6-v2</code>).</p>
-      <p><strong>Constraint-Preserving Pre-Filtered Architecture:</strong></p>
-      <ol>
-        <li><strong>Strict Boolean Pre-Filter:</strong> Before vector scoring, candidate recipes are pre-filtered to remove all active allergens (e.g. peanuts, dairy). This mathematically prevents dense embeddings from ever hallucinating forbidden allergens.</li>
-        <li><strong>Dense Semantic Projection:</strong> Transforms query and candidate recipe texts into 384-dimensional L2-normalized float32 vectors.</li>
-        <li><strong>FAISS IndexFlatIP:</strong> Executes exact cosine similarity search across candidate vectors.</li>
-        <li><strong>Hybrid Scoring Integration:</strong> Fuses lexical title relevance with FAISS dense cosine similarity into LangChain <code>Document</code> metadata.</li>
       </ol>
     </div>
   </div>
