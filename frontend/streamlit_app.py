@@ -366,6 +366,7 @@ graph TD
         ("🛡️ Negative Guardrail (Prep/Calories)", "What is the prep time and calorie count for recipe 78qGO.ejAdsFEJLRl08hVUjiji9zyG6?"),
         ("🧺 Eggs, Onions, Tomatoes, Rice (≤6 Steps)", "I have eggs, onions, tomatoes, and rice. What can I cook with at most 6 steps? Exclude peanuts."),
         ("🍌 Banana Bread without Eggs (Citations)", "How can I make banana bread without eggs? Cite empirical recipe IDs from the dataset."),
+        ("🌐 Panna Cotta without Gelatin (Web Search Fallback)", "How can I adapt panna cotta without gelatin? If local evidence is inadequate, search the web with structured output."),
         ("🍝 Turn 1: Find Penne Pasta", "Find a penne pasta recipe"),
         ("🥛 Turn 2: I cannot have dairy", "I cannot have dairy"),
     ]
@@ -440,12 +441,22 @@ for msg in st.session_state.messages:
                                 st.success("None! 100% pantry satisfied.")
 
             # Task 3: Evidence Substitution Card
-            elif "local_empirical_evidence" in d:
-                st.markdown("##### 🧬 Local Empirical Evidence from Curated Dataset")
-                for ev in d["local_empirical_evidence"]:
-                    st.info(f"**Recipe ID:** `{ev['id']}` — **Title:** *{ev['title']}* ({ev['source']})\n\n"
-                            f"**Substitute Identified:** `{ev['key_substitute_used']}`\n\n"
-                            f"**Sample Ingredients:** {', '.join(ev.get('ingredients_preview', [])[:3])}")
+            elif "local_empirical_evidence" in d or "external_web_citations" in d:
+                if d.get("is_external_web_search"):
+                    st.markdown("##### 🌐 External Web Search Culinary Authority Evidence")
+                    if d.get("uncertainty_statement"):
+                        st.caption(f"ℹ️ {d['uncertainty_statement']}")
+                    for cit in d.get("external_web_citations", []):
+                        st.info(
+                            f"**Authority:** `{cit.get('authority_name', 'External Authority')}` — **Article:** [{cit.get('title', 'Reference Article')}]({cit.get('url', '#')})\n\n"
+                            f"**Verified Excerpt:** *\"{cit.get('snippet', '')}\"*"
+                        )
+                else:
+                    st.markdown("##### 🧬 Local Empirical Evidence from Curated Dataset")
+                    for ev in d.get("local_empirical_evidence", []):
+                        st.info(f"**Recipe ID:** `{ev['id']}` — **Title:** *{ev['title']}* ({ev['source']})\n\n"
+                                f"**Substitute Identified:** `{ev['key_substitute_used']}`\n\n"
+                                f"**Sample Ingredients:** {', '.join(ev.get('ingredients_preview', [])[:3])}")
 
                 # Sensory Trade-offs
                 st.markdown("##### 👅 Sensory & Culinary Trade-Offs")

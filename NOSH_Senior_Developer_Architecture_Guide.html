@@ -793,14 +793,14 @@
       <span class="fn-complexity">Time: O(N) linear scan over titles | Space: O(Evidence)</span>
     </div>
     <div class="fn-body">
-      <p><strong>Purpose:</strong> Implements Task 3 evidence-based recipe adaptation citing empirical local Recipe IDs.</p>
+      <p><strong>Purpose:</strong> Implements Task 3 evidence-based recipe adaptation citing empirical local Recipe IDs, with an integrated <strong>External Web Search Fallback with Forced Structured Output</strong> (<code>backend/src/web_search_engine.py</code>) when local evidence is inadequate.</p>
       <p><strong>Algorithmic Steps:</strong></p>
       <ol>
         <li><strong>Base Recipe Resolution:</strong> Resolves recipe by stable ID or dish title search (e.g. <code>Banana Bread with Pecans</code>, ID: <code>78qGO.ejAdsFEJLRl08hVUjiji9zyG6</code>).</li>
         <li><strong>Functional Role Analysis:</strong> Queries <code>CULINARY_ROLES</code> to determine chemical role of target ingredient (e.g. egg as binder/leavener/moisture). Selects optimal culinary substitute (e.g. <code>Mashed Ripe Banana (or Applesauce)</code> at ratio 1/4 cup per egg).</li>
-        <li><strong>Sister-Recipe Empirical Miner:</strong> Searches local dataset for sibling dishes of the same genre (e.g. <code>banana bread</code>) that omit the target ingredient and adhere to all active restrictions. Extracts 3 concrete supporting recipes, citing their exact Recipe IDs (e.g. <code>[ID: p174TykunvO./PLjDpl03RBTaXiOEdu] 'Vegan Banana Bread'</code>).</li>
-        <li><strong>Ingredient List Rewriting:</strong> Replaces target ingredient with formatted substitution tag: <code>* [SUBSTITUTE: 1/4 cup mashed ripe banana per egg] (Replaces: 2 large eggs)</code>.</li>
-        <li><strong>Procedural Instruction Rewriting:</strong> Applies regex replacement over procedural instructions, replacing <code>eggs?</code> with substitute slurry instructions and appending an adaptation technique note.</li>
+        <li><strong>Sister-Recipe Empirical Miner:</strong> Searches local dataset for sibling dishes of the same genre (e.g. <code>banana bread</code>) omitting target ingredients. If found, cites exact local Recipe IDs (e.g. <code>[ID: p174TykunvO./PLjDpl03RBTaXiOEdu] 'Vegan Banana Bread'</code>).</li>
+        <li><strong>Inadequate Local Evidence Web Search Fallback:</strong> If 0 local sister recipes are found (or for novel ingredients/uncommon dishes like gelatin in panna cotta), engages <code>WebSearchEngine</code> to query external culinary authorities (King Arthur Baking, Serious Eats, Food52), using Groq JSON mode (<code>response_format={'type': 'json_object'}</code>) for forced structured output citing verified external URLs and excerpts.</li>
+        <li><strong>Ingredient List &amp; Procedure Rewriting:</strong> Formats substitutions and revises cooking instructions with technique notes.</li>
         <li><strong>Sensory Trade-Offs &amp; Safety Disclaimer:</strong> Computes culinary trade-offs for taste, texture, and preparation, and attaches the mandatory medical safety disclaimer.</li>
       </ol>
     </div>

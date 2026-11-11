@@ -131,23 +131,51 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
             # AdaptedRecipe object or dict
             adapted = context_data.get("adapted_recipe")
             if adapted:
-                ev_lines = []
-                for ev in adapted.local_empirical_evidence:
-                    ev_lines.append(f"  • ID: {ev.id} | Title: '{ev.title}' (Source: {ev.source})")
+                is_ext = getattr(adapted, "is_external_web_search", False) if not isinstance(adapted, dict) else adapted.get("is_external_web_search", False)
+                if is_ext:
+                    cit_lines = []
+                    cits = getattr(adapted, "external_web_citations", []) if not isinstance(adapted, dict) else adapted.get("external_web_citations", [])
+                    for cit in cits:
+                        auth = getattr(cit, "authority_name", "Web Authority") if not isinstance(cit, dict) else cit.get("authority_name", "Web Authority")
+                        title = getattr(cit, "title", "") if not isinstance(cit, dict) else cit.get("title", "")
+                        url = getattr(cit, "url", "") if not isinstance(cit, dict) else cit.get("url", "")
+                        snip = getattr(cit, "snippet", "") if not isinstance(cit, dict) else cit.get("snippet", "")
+                        cit_lines.append(f"  • Publisher: {auth} | Article: '{title}' | Link: {url}\n    Excerpt: {snip}")
+                    uncert = getattr(adapted, "uncertainty_statement", "") if not isinstance(adapted, dict) else adapted.get("uncertainty_statement", "")
+                    evidence_block = f"- Evidence Source: EXTERNAL_WEB_SEARCH\n- Uncertainty Notice: {uncert}\n- Verified External Authority Links:\n" + "\n".join(cit_lines)
+                else:
+                    ev_lines = []
+                    evs = getattr(adapted, "local_empirical_evidence", []) if not isinstance(adapted, dict) else adapted.get("local_empirical_evidence", [])
+                    for ev in evs:
+                        eid = getattr(ev, "id", "") if not isinstance(ev, dict) else ev.get("id", "")
+                        etitle = getattr(ev, "title", "") if not isinstance(ev, dict) else ev.get("title", "")
+                        esrc = getattr(ev, "source", "") if not isinstance(ev, dict) else ev.get("source", "")
+                        ev_lines.append(f"  • ID: {eid} | Title: '{etitle}' (Source: {esrc})")
+                    evidence_block = "- Evidence Source: LOCAL_DATASET\n- Empirical Evidence Recipes in Local Dataset:\n" + "\n".join(ev_lines)
                 
+                sensory = getattr(adapted, "sensory_trade_offs", {}) if not isinstance(adapted, dict) else adapted.get("sensory_trade_offs", {})
+                updated_ings = getattr(adapted, "updated_ingredients", []) if not isinstance(adapted, dict) else adapted.get("updated_ingredients", [])
+                orig_title = getattr(adapted, "original_title", "") if not isinstance(adapted, dict) else adapted.get("original_title", "")
+                orig_id = getattr(adapted, "original_id", "") if not isinstance(adapted, dict) else adapted.get("original_id", "")
+                rem_ing = getattr(adapted, "ingredient_removed", "") if not isinstance(adapted, dict) else adapted.get("ingredient_removed", "")
+                sub_chosen = getattr(adapted, "substitute_chosen", "") if not isinstance(adapted, dict) else adapted.get("substitute_chosen", "")
+                role_an = getattr(adapted, "culinary_role_analyzed", "") if not isinstance(adapted, dict) else adapted.get("culinary_role_analyzed", "")
+                rev_inst = getattr(adapted, "revised_instructions", "") if not isinstance(adapted, dict) else adapted.get("revised_instructions", "")
+                disclaimer = getattr(adapted, "safety_disclaimer", "") if not isinstance(adapted, dict) else adapted.get("safety_disclaimer", "")
+
                 return (
-                    f"- Original Dish: {adapted.original_title} (ID: {adapted.original_id})\n"
-                    f"- Removed Ingredient: {adapted.ingredient_removed}\n"
-                    f"- Chosen Substitute: {adapted.substitute_chosen}\n"
-                    f"- Functional Culinary Role: {adapted.culinary_role_analyzed}\n"
-                    f"- Empirical Evidence Recipes in Local Dataset:\n" + "\n".join(ev_lines) + "\n"
+                    f"- Original Dish: {orig_title} (ID: {orig_id})\n"
+                    f"- Removed Ingredient: {rem_ing}\n"
+                    f"- Chosen Substitute: {sub_chosen}\n"
+                    f"- Functional Culinary Role: {role_an}\n"
+                    f"{evidence_block}\n"
                     f"- Sensory Trade-Offs:\n"
-                    f"    Taste: {adapted.sensory_trade_offs.get('taste')}\n"
-                    f"    Texture: {adapted.sensory_trade_offs.get('texture')}\n"
-                    f"    Preparation: {adapted.sensory_trade_offs.get('preparation')}\n"
-                    f"- Medical Safety Disclaimer: {adapted.safety_disclaimer}\n"
-                    f"- Updated Ingredients:\n" + "\n".join([f"    {ing}" for ing in adapted.updated_ingredients]) + "\n"
-                    f"- Revised Procedural Steps:\n{adapted.revised_instructions}"
+                    f"    Taste: {sensory.get('taste')}\n"
+                    f"    Texture: {sensory.get('texture')}\n"
+                    f"    Preparation: {sensory.get('preparation')}\n"
+                    f"- Medical Safety Disclaimer: {disclaimer}\n"
+                    f"- Updated Ingredients:\n" + "\n".join([f"    {ing}" for ing in updated_ings]) + "\n"
+                    f"- Revised Procedural Steps:\n{rev_inst}"
                 )
 
         elif intent in ["SEARCH", "RESTRICTION_REFINEMENT"]:

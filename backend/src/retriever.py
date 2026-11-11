@@ -17,7 +17,7 @@ from typing import List, Dict, Set, Any, Optional
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 from normalization import clean_raw_ingredient
 from ingestion import RecipeIndexBundle, get_index_bundle
@@ -29,12 +29,10 @@ class RecipeRetriever(BaseRetriever):
     A LangChain-native Retriever that performs fast lexical-token retrieval
     over 121,684 curated recipes with strict constraint enforcement.
     """
-    bundle: RecipeIndexBundle = Field(default_factory=get_index_bundle)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    bundle: Any = Field(default_factory=get_index_bundle)
     hard_exclusions: List[str] = Field(default_factory=list)
     top_k: int = 5
-
-    class Config:
-        arbitrary_types_allowed = True
 
     def _get_relevant_documents(
         self,

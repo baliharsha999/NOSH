@@ -33,22 +33,25 @@ if hasattr(sys.stdout, "reconfigure"):
 # Opt-out of DeepEval telemetry for instant evaluation execution
 os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
-# Ensure backend/src and evaluations are on sys.path
+# Ensure robust sys.path configuration across root, backend, src, and evaluations
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SRC_DIR = PROJECT_ROOT / "backend" / "src"
+BACKEND_DIR = PROJECT_ROOT / "backend"
+SRC_DIR = BACKEND_DIR / "src"
 EVAL_DIR = PROJECT_ROOT / "evaluations"
 
-for p in [str(SRC_DIR), str(EVAL_DIR)]:
+for p in [str(PROJECT_ROOT), str(BACKEND_DIR), str(EVAL_DIR), str(SRC_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
 from deepeval.test_case import LLMTestCase, SingleTurnParams
 from deepeval.metrics import GEval
 
-from eval_models import GroqDeepEvalModel
-from ingestion import get_index_bundle
+from ingestion import get_index_bundle, RecipeIndexBundle
 from pipeline import NoshPipeline
 from guardrails import NoshGuardrails
+from matcher import MatchRequest
+from substitution_engine import SubstitutionRequest
+from eval_models import GroqDeepEvalModel
 
 
 def build_evaluation_metrics(model: GroqDeepEvalModel) -> Dict[str, GEval]:
@@ -113,6 +116,19 @@ def build_evaluation_metrics(model: GroqDeepEvalModel) -> Dict[str, GEval]:
                 "Check that updated ingredients and revised procedural steps are provided.",
                 "Check that sensory trade-offs (taste, texture, preparation) are explained.",
                 "Verify that an explicit medical safety disclaimer is included."
+            ],
+            evaluation_params=[SingleTurnParams.ACTUAL_OUTPUT, SingleTurnParams.INPUT],
+            model=model,
+            threshold=0.8
+        ),
+        "web_search_structured_substitution": GEval(
+            name="External Web Search Fallback with Forced Structured Output",
+            criteria="Verify that inadequate local evidence triggers external web search citing external authority links, forced structured outputs, and a medical disclaimer.",
+            evaluation_steps=[
+                "Check that the response indicates external culinary authority web search was engaged due to inadequate local dataset evidence.",
+                "Verify that verified external authority links (URLs, e.g. Serious Eats or King Arthur Baking) are cited.",
+                "Verify that updated ingredients and revised instructions are provided.",
+                "Verify that sensory trade-offs and an explicit medical safety disclaimer are present."
             ],
             evaluation_params=[SingleTurnParams.ACTUAL_OUTPUT, SingleTurnParams.INPUT],
             model=model,
@@ -191,6 +207,7 @@ def run_full_evaluation():
         "reason": metric_1.reason,
         "details": f"Accumulated restrictions: {list(session.accumulated_restrictions)}"
     })
+    time.sleep(1.0)
 
     # =========================================================================
     # TEST CASE 2: Reproducible Aggregate Query (Task 1)
@@ -219,6 +236,7 @@ def run_full_evaluation():
         "reason": metric_2.reason,
         "details": f"Deterministic stats: {t2_out.get('data')}"
     })
+    time.sleep(1.0)
 
     # =========================================================================
     # TEST CASE 3: Matching with Step & Peanut Constraints (Task 2)
@@ -250,6 +268,7 @@ def run_full_evaluation():
         "reason": metric_3.reason,
         "details": f"Max steps satisfied: {step_check}, Zero peanuts: {peanut_check}, Candidates count: {len(candidate_recipes)}"
     })
+    time.sleep(1.0)
 
     # =========================================================================
     # TEST CASE 4: Strict No-Match Edge Case
@@ -257,7 +276,6 @@ def run_full_evaluation():
     print("-" * 80)
     print("TEST CASE 4: Strict No-Match Edge Case (Chocolate cake, 0 flour, 0 eggs, 0 dairy, <=2 steps)")
     print("-" * 80, flush=True)
-    from matcher import MatchRequest
     # Impossible constraint query: chocolate cake without flour, eggs, or dairy in <= 2 steps
     cake_impossible_match = pipeline.matcher.match(MatchRequest(
         available_ingredients=["chocolate cake"],
@@ -287,6 +305,7 @@ def run_full_evaluation():
         "reason": metric_4.reason,
         "details": f"Eligible found: {cake_impossible_match.total_eligible_found} (0 expected under impossible constraints)"
     })
+    time.sleep(1.0)
 
     # =========================================================================
     # TEST CASE 5: Evidence-Based Substitution (Task 3)
@@ -318,6 +337,40 @@ def run_full_evaluation():
         "reason": metric_5.reason,
         "details": f"Citations verified: {len(citations)}, Recipe IDs: {[c['id'] for c in citations[:2]]}"
     })
+    time.sleep(1.0)
+
+    # =========================================================================
+    # TEST CASE 5B: Inadequate Local Evidence Web Search Fallback (Task 3)
+    # =========================================================================
+    print("-" * 80)
+    print("TEST CASE 5B: Web Search Fallback with Forced Structured Output (Panna cotta without gelatin)")
+    print("-" * 80, flush=True)
+    t5b_query = "How can I adapt panna cotta without gelatin? If local evidence is inadequate, search the web with structured output."
+    t5b_out = pipeline.process_query(t5b_query, use_llm=False)
+
+    test_case_5b = LLMTestCase(
+        input=t5b_query,
+        actual_output=t5b_out["response"]
+    )
+    metric_5b = metrics["web_search_structured_substitution"]
+    metric_5b.measure(test_case_5b)
+
+    sub_data_5b = t5b_out.get("data", {})
+    is_web = sub_data_5b.get("is_external_web_search") is True
+    ext_citations = sub_data_5b.get("external_web_citations", [])
+    has_ext_links = len(ext_citations) > 0 and all("http" in c.get("url", "") for c in ext_citations)
+    has_disclaimer_5b = "Medical Safety Disclaimer" in t5b_out["response"]
+
+    passed_5b = metric_5b.is_successful() and is_web and has_ext_links and has_disclaimer_5b
+    print(f"Result: {'[PASS]' if passed_5b else '[FAIL]'} | Score: {metric_5b.score} | Reason: {metric_5b.reason}\n", flush=True)
+    eval_results.append({
+        "test_case": "5B. Web Search Fallback with Forced Structured Output",
+        "passed": passed_5b,
+        "score": metric_5b.score,
+        "reason": metric_5b.reason,
+        "details": f"Evidence source: {sub_data_5b.get('evidence_source')}, External citations: {len(ext_citations)}, Links: {[c['url'] for c in ext_citations[:2]]}"
+    })
+    time.sleep(1.0)
 
     # =========================================================================
     # TEST CASE 6: Absence-of-Data Guardrail

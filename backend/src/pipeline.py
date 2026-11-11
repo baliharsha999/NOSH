@@ -251,7 +251,8 @@ class NoshPipeline:
 
         # 2. Substitution / Recipe Adaptation
         if any(w in q for w in ["substitute", "substitution", "replace", "without egg", "without eggs", "without dairy", 
-                               "eggless", "dairy-free", "remove egg", "remove butter", "remove cream", "adapt recipe"]):
+                               "eggless", "dairy-free", "remove egg", "remove butter", "remove cream", "adapt recipe",
+                               "without gelatin", "substitute gelatin", "substitute buttermilk", "replace gelatin", "replace buttermilk"]):
             return {"intent": "SUBSTITUTION"}
 
         # 3. Analytics Intent
@@ -378,39 +379,66 @@ class NoshPipeline:
         }
 
     def _node_substitution(self, state: PipelineState) -> Dict[str, Any]:
-        """Node 3C: Executes Task 3 evidence-based substitution citing local Recipe IDs."""
+        """Node 3C: Executes Task 3 evidence-based substitution citing local Recipe IDs, with Web Search fallback."""
         user_query = state.get("user_query", "")
         q_lower = user_query.lower()
 
         target_ing = "egg"
-        if "cream" in q_lower or "heavy cream" in q_lower:
+        if "gelatin" in q_lower:
+            target_ing = "gelatin"
+        elif "buttermilk" in q_lower:
+            target_ing = "buttermilk"
+        elif "cream" in q_lower or "heavy cream" in q_lower:
             target_ing = "heavy cream" if "heavy cream" in q_lower else "cream"
         elif "butter" in q_lower:
             target_ing = "butter"
         elif "egg" in q_lower:
             target_ing = "egg"
+        else:
+            m = re.search(r"(?:replace|substitute|without|remove)\s+([a-zA-Z]+)", q_lower)
+            if m:
+                target_ing = m.group(1)
 
-        recipe_title = "banana bread" if "banana" in q_lower else "pasta"
+        recipe_title = "banana bread" if "banana" in q_lower else ("panna cotta" if "panna" in q_lower or "gelatin" in q_lower else "pasta")
         m_id = re.search(r"([a-zA-Z0-9\._/]{25,35})", user_query)
         recipe_id = m_id.group(1) if m_id else None
+
+        force_web = any(k in q_lower for k in ["web", "internet", "google", "online", "external"])
 
         sub_req = SubstitutionRequest(
             recipe_id=recipe_id,
             recipe_title=recipe_title,
             ingredient_to_remove=target_ing,
-            hard_restrictions=list(state.get("accumulated_restrictions", []))
+            hard_restrictions=list(state.get("accumulated_restrictions", [])),
+            force_web_search=force_web
         )
         adapted = self.substitution.adapt_recipe(sub_req)
 
         resp_lines = [
-            f"### Evidence-Based Recipe Adaptation: **{adapted.original_title}**",
-            f"- **Ingredient Removed:** `{adapted.ingredient_removed.upper()}`",
-            f"- **Chosen Substitute:** **{adapted.substitute_chosen}**",
-            f"- **Culinary Role Analyzed:** {adapted.culinary_role_analyzed}\n",
-            f"#### Local Empirical Evidence (Cited Recipe IDs from Curated Dataset):"
+            f"### Evidence-Based Recipe Adaptation: **{adapted.original_title}**"
         ]
-        for ev in adapted.local_empirical_evidence:
-            resp_lines.append(f"  • **[ID: `{ev.id}`]** *{ev.title}* ({ev.source})")
+
+        if adapted.is_external_web_search:
+            if adapted.uncertainty_statement:
+                resp_lines.append(f"> ℹ️ *{adapted.uncertainty_statement}*\n")
+            resp_lines.extend([
+                f"- **Ingredient Removed:** `{adapted.ingredient_removed.upper()}`",
+                f"- **Chosen Substitute:** **{adapted.substitute_chosen}**",
+                f"- **Culinary Role Analyzed:** {adapted.culinary_role_analyzed}\n",
+                f"#### External Authority Web Citations (Verified External Links):"
+            ])
+            for cit in adapted.external_web_citations:
+                resp_lines.append(f"  • **[{cit.authority_name}]** [{cit.title}]({cit.url})")
+                resp_lines.append(f"    *Evidence Excerpt:* \"{cit.snippet}\"")
+        else:
+            resp_lines.extend([
+                f"- **Ingredient Removed:** `{adapted.ingredient_removed.upper()}`",
+                f"- **Chosen Substitute:** **{adapted.substitute_chosen}**",
+                f"- **Culinary Role Analyzed:** {adapted.culinary_role_analyzed}\n",
+                f"#### Local Empirical Evidence (Cited Recipe IDs from Curated Dataset):"
+            ])
+            for ev in adapted.local_empirical_evidence:
+                resp_lines.append(f"  • **[ID: `{ev.id}`]** *{ev.title}* ({ev.source})")
 
         resp_lines.append("\n#### Updated Ingredients List:")
         for ing in adapted.updated_ingredients:
