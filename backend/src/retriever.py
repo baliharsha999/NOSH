@@ -21,6 +21,7 @@ from pydantic import Field
 
 from normalization import clean_raw_ingredient
 from ingestion import RecipeIndexBundle, get_index_bundle
+from vector_store import get_faiss_store
 
 
 class RecipeRetriever(BaseRetriever):
@@ -86,7 +87,23 @@ class RecipeRetriever(BaseRetriever):
                 if token in title_lower:
                     candidate_scores[rid] += 1.0
 
-        # Sort candidates by score
+        # FAISS Dense Semantic Vector Reranking on pre-filtered candidate pool
+        top_candidate_ids = [r for r, _ in sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)[:50]]
+        recipe_texts = {}
+        for rid in top_candidate_ids:
+            rec = self.bundle.recipe_store.get(rid)
+            if rec:
+                recipe_texts[rid] = f"Recipe: {rec['title']}. Ingredients: {', '.join(rec.get('cleaned_ing_names', [])[:8])}"
+
+        faiss_sim_map = {}
+        if top_candidate_ids:
+            faiss_store = get_faiss_store()
+            faiss_res = faiss_store.search_candidates(q_clean, top_candidate_ids, recipe_texts, top_k=self.top_k * 2)
+            for f_rid, f_score in faiss_res:
+                faiss_sim_map[f_rid] = f_score
+                candidate_scores[f_rid] = candidate_scores.get(f_rid, 0.0) + (f_score * 4.0)
+
+        # Sort candidates by combined hybrid score (Lexical + FAISS Dense Cosine Similarity)
         sorted_candidates = sorted(
             candidate_scores.items(),
             key=lambda x: x[1],
@@ -113,6 +130,7 @@ class RecipeRetriever(BaseRetriever):
                 "title": rec["title"],
                 "source": rec["source"],
                 "score": score,
+                "faiss_cosine_similarity": faiss_sim_map.get(rid, 0.0),
                 "num_steps": rec["num_steps"],
                 "num_ingredients": rec["num_ingredients"],
                 "picture_link": rec.get("picture_link")

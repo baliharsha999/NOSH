@@ -307,9 +307,19 @@ class NoshPipeline:
                 )
 
             fallback_text = "\n".join(resp_lines)
+            llm_response = self.llm.synthesize(
+                user_query=user_query,
+                intent=intent,
+                context_data={
+                    "documents": docs,
+                    "active_restrictions": list(session.accumulated_restrictions)
+                },
+                raw_fallback_response=fallback_text
+            ) if use_llm else fallback_text
+
             return {
                 "intent": intent,
-                "response": fallback_text,
+                "response": llm_response,
                 "active_restrictions": list(session.accumulated_restrictions),
                 "data": {"recipes": doc_cards}
             }
@@ -455,8 +465,18 @@ class NoshPipeline:
             )
 
         fallback_text = "\n".join(resp_lines)
+        llm_response = self.llm.synthesize(
+            user_query=user_query,
+            intent=intent,
+            context_data={
+                "documents": docs,
+                "active_restrictions": list(session.accumulated_restrictions)
+            },
+            raw_fallback_response=fallback_text
+        ) if use_llm else fallback_text
+
         return {
             "intent": intent,
-            "response": fallback_text,
+            "response": llm_response,
             "data": {"recipes": doc_cards}
         }

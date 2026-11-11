@@ -14,13 +14,11 @@ Why a Custom Loader?
   domain metadata (e.g. recipe ID, source website, step counts, image links).
   `RecipeDocumentLoader` guarantees 100% metadata preservation for downstream retrieval.
 """
-
 import json
 import os
 from typing import List, Dict, Any, Iterator, Optional
 from langchain_core.document_loaders import BaseLoader
 from langchain_core.documents import Document
-
 
 class RecipeDocumentLoader(BaseLoader):
     """

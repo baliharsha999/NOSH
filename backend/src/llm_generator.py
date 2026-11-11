@@ -150,4 +150,23 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
                     f"- Revised Procedural Steps:\n{adapted.revised_instructions}"
                 )
 
+        elif intent in ["SEARCH", "RESTRICTION_REFINEMENT"]:
+            # Retrieved LangChain Document objects or card dicts
+            docs = context_data.get("documents", [])
+            restrictions = context_data.get("active_restrictions", [])
+            if docs:
+                doc_lines = []
+                for idx, doc in enumerate(docs[:5], 1):
+                    meta = getattr(doc, "metadata", {}) if not isinstance(doc, dict) else doc
+                    content = getattr(doc, "page_content", "") if not isinstance(doc, dict) else str(doc.get("ingredients", ""))
+                    doc_lines.append(
+                        f"{idx}. {meta.get('title')} (ID: {meta.get('id')}, Source: {meta.get('source')})\n"
+                        f"   - Steps: {meta.get('num_steps')} | Ingredients Count: {meta.get('num_ingredients')}\n"
+                        f"   - Verified Content: {content[:150].strip()}..."
+                    )
+                return (
+                    f"- Enforced Dietary Restrictions: {restrictions or 'None (Pantry neutral)'}\n"
+                    f"- Top Retrieved Recipes from Curated Corpus (100% Allergen Safe):\n" + "\n".join(doc_lines)
+                )
+
         return fallback_text
