@@ -12,7 +12,7 @@ Purpose:
 Why a Custom Loader?
   Standard LangChain `JSONLoader` requires complex jq queries and loses critical
   domain metadata (e.g. recipe ID, source website, step counts, image links).
-  `RecipeDocumentLoader` guarantees 100% metadata preservation as mandated by the assignment.
+  `RecipeDocumentLoader` guarantees 100% metadata preservation for downstream retrieval.
 """
 
 import json

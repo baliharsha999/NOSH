@@ -109,6 +109,9 @@ SYNONYM_MAP: Dict[str, str] = {
     "granulated white sugar": "sugar",
     "all purpose white flour": "all purpose flour",
     "plain flour": "all purpose flour",
+    "groundnut": "peanut",
+    "groundnuts": "peanuts",
+    "groundnut oil": "peanut oil",
     "cremini mushroom": "baby bella mushroom",
     "portobello mushroom": "portobello"
 }
@@ -127,7 +130,8 @@ ALLERGEN_TAXONOMY: Dict[str, Set[str]] = {
         "cream cheese", "condensed milk", "evaporated milk"
     },
     "peanuts": {
-        "peanut", "peanuts", "peanut butter", "peanut oil", "peanut flour"
+        "peanut", "peanuts", "peanut butter", "peanut oil", "peanut flour",
+        "groundnut", "groundnuts", "groundnut oil", "monkey nut"
     },
     "tree_nuts": {
         "almond", "almonds", "walnut", "walnuts", "cashew", "cashews",

@@ -4,7 +4,7 @@ backend/src/matcher.py
 ----------------------
 Ingredient-Based Recipe Matching & Constraint Solver Engine for Task 2.
 
-Mandate from NOSH Assignment:
+Core System Specifications:
   "Given a list of available ingredients and a set of criteria, retrieve and
    rank the closest existing recipes from the dataset. Do not invent new recipes.
    Never relax a hard constraint silently. If no eligible recipe exists, state
@@ -26,7 +26,7 @@ Key Architecture Features:
 from typing import List, Dict, Set, Any, Optional
 from pydantic import BaseModel, Field
 
-from normalization import clean_raw_ingredient, extract_normalized_keys
+from normalization import clean_raw_ingredient, extract_normalized_keys, ALLERGEN_TAXONOMY
 from ingestion import RecipeIndexBundle, get_index_bundle
 
 
@@ -128,14 +128,15 @@ class RecipeMatcher:
 
         norm_avail_keys: Set[str] = set(norm_avail_map.keys())
 
-        # Collect normalized exclusion keys
+        # Collect normalized exclusion keys & expand allergen categories
         norm_excl_keys: Set[str] = set()
         for raw_excl in request.hard_exclusions:
-            clean_ex = clean_raw_ingredient(raw_excl)
-            if clean_ex:
-                norm_excl_keys.add(clean_ex)
-            else:
-                norm_excl_keys.add(raw_excl.strip().lower())
+            clean_ex = clean_raw_ingredient(raw_excl) or raw_excl.strip().lower()
+            norm_excl_keys.add(clean_ex)
+            # Expand allergen aliases (e.g., peanuts -> groundnut, groundnut oil, peanut butter)
+            for cat, keywords in ALLERGEN_TAXONOMY.items():
+                if clean_ex == cat or clean_ex in keywords:
+                    norm_excl_keys.update(keywords)
 
         # ---------------------------------------------------------------------
         # Stage 2: Strict Boolean Filtering (Hard Exclusions)
