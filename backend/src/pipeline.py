@@ -200,34 +200,6 @@ class NoshPipeline:
 
         return workflow.compile()
 
-    # Backwards-compatibility node delegates
-    def _node_guardrail(self, state: PipelineState, writer):
-        return self.nodes.node_guardrail(state, writer)
-
-    def _node_intent_router(self, state: PipelineState, writer):
-        return self.nodes.node_intent_router(state, writer)
-
-    def _node_analytics(self, state: PipelineState):
-        return self.nodes.node_analytics(state)
-
-    def _node_matching(self, state: PipelineState):
-        return self.nodes.node_matching(state)
-
-    def _node_substitution(self, state: PipelineState):
-        return self.nodes.node_substitution(state)
-
-    def _node_refinement(self, state: PipelineState):
-        return self.nodes.node_refinement(state)
-
-    def _node_search(self, state: PipelineState):
-        return self.nodes.node_search(state)
-
-    def _node_synthesis(self, state: PipelineState, writer):
-        return self.nodes.node_synthesis(state, writer)
-
-    def _node_output_guardrail(self, state: PipelineState, writer):
-        return self.nodes.node_output_guardrail(state, writer)
-
     # =========================================================================
     # Mermaid Visualizer & Public Execution Interface
     # =========================================================================
