@@ -174,6 +174,12 @@ CULINARY_ROLES = {
     }
 }
 
+# Plural and common aliases for culinary roles
+CULINARY_ROLES["eggs"] = CULINARY_ROLES["egg"]
+CULINARY_ROLES["creams"] = CULINARY_ROLES["cream"]
+CULINARY_ROLES["heavy creams"] = CULINARY_ROLES["heavy cream"]
+CULINARY_ROLES["butters"] = CULINARY_ROLES["butter"]
+
 
 class SubstitutionEngine:
     """
@@ -231,8 +237,11 @@ class SubstitutionEngine:
                 "source": "AllRecipes"
             }
 
-        target_ing = request.ingredient_to_remove.lower().strip()
-        role_info = CULINARY_ROLES.get(target_ing)
+        raw_target = request.ingredient_to_remove.lower().strip()
+        target_ing = clean_raw_ingredient(raw_target) or raw_target
+        if target_ing.endswith("s") and target_ing[:-1] in CULINARY_ROLES:
+            target_ing = target_ing[:-1]
+        role_info = CULINARY_ROLES.get(target_ing) or CULINARY_ROLES.get(raw_target)
 
         # Step 2: Mine local dataset for empirical sister recipes
         supporting_evidence: List[SupportingEvidenceRecipe] = []
@@ -242,11 +251,16 @@ class SubstitutionEngine:
             dish_kw = "banana bread" if "banana" in base_recipe["title"].lower() else "pasta"
             disqualified_ids = set()
 
-            clean_target = clean_raw_ingredient(target_ing) or target_ing
-            if clean_target in self.allergen_index:
-                disqualified_ids.update(self.allergen_index[clean_target])
-            if clean_target in self.inverted_index:
-                disqualified_ids.update(self.inverted_index[clean_target])
+            for form in {target_ing, raw_target, target_ing + "s", "egg", "eggs"} if "egg" in target_ing else {target_ing, raw_target}:
+                clean_f = clean_raw_ingredient(form) or form
+                if clean_f in self.allergen_index:
+                    disqualified_ids.update(self.allergen_index[clean_f])
+                if clean_f in self.inverted_index:
+                    disqualified_ids.update(self.inverted_index[clean_f])
+                if form in self.allergen_index:
+                    disqualified_ids.update(self.allergen_index[form])
+                if form in self.inverted_index:
+                    disqualified_ids.update(self.inverted_index[form])
 
             for rest in request.hard_restrictions:
                 clean_rest = clean_raw_ingredient(rest) or rest

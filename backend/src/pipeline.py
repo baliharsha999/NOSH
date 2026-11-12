@@ -55,6 +55,15 @@ class PipelineState(TypedDict, total=False):
     guardrail_triggered: Optional[str]
     intent: str
 
+    # Extracted Query Understanding & Semantic Entities (LLM-Parsed)
+    cleaned_dish_or_recipe: Optional[str]
+    pantry_ingredients: Optional[List[str]]
+    exclusions: Optional[List[str]]
+    target_ingredient: Optional[str]
+    is_step_ranking: Optional[bool]
+    substitute_ingredient: Optional[str]
+    max_steps: Optional[int]
+
     # Intermediate Engine Artifacts
     context_data: Optional[Any]
     data: Optional[Dict[str, Any]]
@@ -238,12 +247,14 @@ class NoshPipeline:
         }
 
     def _node_intent_router(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
-        """Node 2: Classifies conversational intent based on user query and linguistic cues."""
+        """Node 2: Intelligent Query Understanding & Entity Extraction powered by Groq LLM with deterministic fallback."""
         user_query = state.get("user_query", "")
-        q = user_query.lower()
+        parsed = self.llm.parse_query_semantics(user_query)
 
-        # 1. Absence of data check (fallback if not caught in guardrail)
-        if any(w in q for w in ["prep time", "preparation time", "calorie", "calories", "nutritional value", "how many calories"]):
+        detected_intent = parsed.get("intent", "SEARCH")
+
+        # Handle Absence-of-Data guardrail
+        if detected_intent == "ABSENCE_GUARDRAIL":
             writer(ABSENCE_OF_DATA_EXPLANATION)
             return {
                 "guardrail_blocked": True,
@@ -253,25 +264,16 @@ class NoshPipeline:
                 "data": {"guardrail_triggered": "absence_of_data", "field_requested": "prep_time_or_calories"}
             }
 
-        # 2. Substitution / Recipe Adaptation
-        if any(w in q for w in ["substitute", "substitution", "replace", "without egg", "without eggs", "without dairy", 
-                               "eggless", "dairy-free", "remove egg", "remove butter", "remove cream", "adapt recipe",
-                               "without gelatin", "substitute gelatin", "substitute buttermilk", "replace gelatin", "replace buttermilk"]):
-            return {"intent": "SUBSTITUTION"}
-
-        # 3. Analytics Intent
-        if any(w in q for w in ["how many", "what percentage", "percentage of", "fewest instruction steps", "fewest steps", "rank", "average steps", "median"]):
-            return {"intent": "ANALYTICS"}
-
-        # 4. Matching Intent (I have X, Y, Z...)
-        if any(w in q for w in ["i have", "we have", "ingredients in my fridge", "pantry", "suggest recipes using"]):
-            return {"intent": "MATCHING"}
-
-        # 5. Restriction refinement (e.g. "I cannot have dairy", "no peanuts", "exclude eggs")
-        if any(w in q for w in ["cannot have", "can't have", "allergic to", "allergy", "no dairy", "no peanuts", "no gluten", "exclude", "without"]):
-            return {"intent": "RESTRICTION_REFINEMENT"}
-
-        return {"intent": "SEARCH"}
+        return {
+            "intent": detected_intent,
+            "cleaned_dish_or_recipe": parsed.get("cleaned_dish_or_recipe"),
+            "pantry_ingredients": parsed.get("pantry_ingredients", []),
+            "exclusions": parsed.get("exclusions", []),
+            "target_ingredient": parsed.get("target_ingredient"),
+            "is_step_ranking": parsed.get("is_step_ranking", False),
+            "substitute_ingredient": parsed.get("substitute_ingredient"),
+            "max_steps": parsed.get("max_steps")
+        }
 
     def _node_analytics(self, state: PipelineState) -> Dict[str, Any]:
         """Node 3A: Executes Task 1 exact programmatic statistical calculations."""
@@ -350,18 +352,25 @@ class NoshPipeline:
         """Node 3B: Executes Task 2 explainable pantry inventory matching with constraint satisfaction."""
         user_query = state.get("user_query", "")
         q_lower = user_query.lower()
-        avail = []
-        for item in ["eggs", "onions", "tomatoes", "rice", "garlic", "chicken", "beef", "potatoes", "cheese", "pasta"]:
-            if item in q_lower:
-                avail.append(item)
+
+        avail = state.get("pantry_ingredients") or []
         if not avail:
-            avail = ["eggs", "onions", "tomatoes", "rice"]
+            for item in ["eggs", "onions", "tomatoes", "rice", "garlic", "chicken", "beef", "potatoes", "cheese", "pasta"]:
+                if item in q_lower:
+                    avail.append(item)
+            if not avail:
+                avail = ["eggs", "onions", "tomatoes", "rice"]
 
         excl = list(state.get("accumulated_restrictions", []))
+        for extra in state.get("exclusions", []):
+            if extra.lower() not in excl:
+                excl.append(extra.lower())
         if "peanut" in q_lower and "peanuts" not in excl:
             excl.append("peanuts")
 
-        max_steps = 6 if "6" in q_lower or "six" in q_lower else None
+        max_steps = state.get("max_steps")
+        if max_steps is None and ("6" in q_lower or "six" in q_lower):
+            max_steps = 6
 
         req = MatchRequest(
             available_ingredients=avail,
@@ -401,23 +410,41 @@ class NoshPipeline:
         user_query = state.get("user_query", "")
         q_lower = user_query.lower()
 
-        target_ing = "egg"
-        if "gelatin" in q_lower:
-            target_ing = "gelatin"
-        elif "buttermilk" in q_lower:
-            target_ing = "buttermilk"
-        elif "cream" in q_lower or "heavy cream" in q_lower:
-            target_ing = "heavy cream" if "heavy cream" in q_lower else "cream"
-        elif "butter" in q_lower:
-            target_ing = "butter"
-        elif "egg" in q_lower:
-            target_ing = "egg"
+        target_ing = state.get("substitute_ingredient")
+        if not target_ing:
+            if "gelatin" in q_lower:
+                target_ing = "gelatin"
+            elif "buttermilk" in q_lower:
+                target_ing = "buttermilk"
+            elif "cream" in q_lower or "heavy cream" in q_lower:
+                target_ing = "heavy cream" if "heavy cream" in q_lower else "cream"
+            elif "butter" in q_lower:
+                target_ing = "butter"
+            elif "egg" in q_lower:
+                target_ing = "egg"
+            else:
+                m = re.search(r"(?:replace|substitute|without|remove)\s+([a-zA-Z]+)", q_lower)
+                if m:
+                    target_ing = m.group(1)
+                else:
+                    target_ing = "egg"
         else:
-            m = re.search(r"(?:replace|substitute|without|remove)\s+([a-zA-Z]+)", q_lower)
-            if m:
-                target_ing = m.group(1)
+            target_ing = target_ing.lower().strip()
+            if "egg" in target_ing:
+                target_ing = "egg"
+            elif "butter" in target_ing:
+                target_ing = "butter"
+            elif "heavy cream" in target_ing:
+                target_ing = "heavy cream"
+            elif "cream" in target_ing:
+                target_ing = "cream"
+            elif "gelatin" in target_ing:
+                target_ing = "gelatin"
 
-        recipe_title = "banana bread" if "banana" in q_lower else ("panna cotta" if "panna" in q_lower or "gelatin" in q_lower else "pasta")
+        recipe_title = (state.get("cleaned_dish_or_recipe") or "").strip()
+        if not recipe_title or "banana" in q_lower:
+            recipe_title = "banana bread" if "banana" in q_lower else ("panna cotta" if "panna" in q_lower or "gelatin" in q_lower else (recipe_title or "pasta"))
+
         m_id = re.search(r"([a-zA-Z0-9\._/]{25,35})", user_query)
         recipe_id = m_id.group(1) if m_id else None
 
@@ -481,6 +508,12 @@ class NoshPipeline:
         q_lower = user_query.lower()
         accum = list(state.get("accumulated_restrictions", []))
 
+        # Add newly extracted exclusions from LLM
+        for ex in state.get("exclusions", []):
+            clean_ex = ex.strip().lower()
+            if clean_ex not in accum:
+                accum.append(clean_ex)
+
         detected_restriction = None
         if "dairy" in q_lower or "milk" in q_lower or "cheese" in q_lower:
             detected_restriction = "dairy"
@@ -536,15 +569,19 @@ class NoshPipeline:
         """Node 3E: Standard natural language retrieval with active dietary exclusions."""
         user_query = state.get("user_query", "")
         accum = list(state.get("accumulated_restrictions", []))
+
+        # Use LLM-cleaned dish name (e.g. "Turkey Sausage Tacos") if available, else user query
+        search_target = state.get("cleaned_dish_or_recipe") or user_query
+
         retriever = RecipeRetriever(
             bundle=self.bundle,
             hard_exclusions=accum,
             top_k=5
         )
-        docs = retriever.invoke(user_query)
+        docs = retriever.invoke(search_target)
 
         resp_lines = [
-            f"**Search Results for '{user_query}':**",
+            f"**Search Results for '{search_target}':**",
             f"Active restrictions enforced: **{accum or 'None'}**\n"
         ]
         doc_cards = []
@@ -606,7 +643,7 @@ class NoshPipeline:
 
         appended_notice = ""
         if intent == "SUBSTITUTION":
-            if MEDICAL_DISCLAIMER not in response:
+            if "Medical Safety Disclaimer" not in response:
                 appended_notice = f"\n\n> ⚠️ *{MEDICAL_DISCLAIMER}*"
                 response = response + appended_notice
         elif intent == "MATCHING":

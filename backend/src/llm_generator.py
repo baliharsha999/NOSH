@@ -245,3 +245,84 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
                 )
 
         return fallback_text
+
+    def parse_query_semantics(self, query: str) -> Dict[str, Any]:
+        """
+        Uses LLM (Groq) to accurately extract intent, dish names, pantry ingredients,
+        and exclusions without fragile string manipulation or regex.
+        Falls back to rule-based heuristics if LLM is unavailable or times out.
+        """
+        q_lower = query.lower()
+        # Fast guardrail check for absence of data
+        if any(w in q_lower for w in ["prep time", "preparation time", "calorie", "calories", "nutritional value", "how many calories"]):
+            return {
+                "intent": "ABSENCE_GUARDRAIL",
+                "cleaned_dish_or_recipe": None,
+                "pantry_ingredients": [],
+                "exclusions": [],
+                "target_ingredient": None,
+                "is_step_ranking": False,
+                "substitute_ingredient": None,
+                "max_steps": None
+            }
+
+        if self.is_available():
+            try:
+                system_instruction = (
+                    "You are an expert NLP culinary query understanding parser for a grounded recipe intelligence engine.\n"
+                    "Analyze the user request and output JSON with these exact fields:\n"
+                    "- intent: exactly one of ['ABSENCE_GUARDRAIL', 'ANALYTICS', 'MATCHING', 'SUBSTITUTION', 'RESTRICTION_REFINEMENT', 'SEARCH']\n"
+                    "- cleaned_dish_or_recipe: clean dish name or search target without conversational filler (e.g. 'Turkey Sausage Tacos', 'Penne Pasta', 'Banana Bread', null)\n"
+                    "- pantry_ingredients: list of ingredients the user has on hand (e.g. ['eggs', 'onions', 'tomatoes', 'rice'])\n"
+                    "- exclusions: list of ingredients or allergens to exclude (e.g. ['peanuts', 'dairy'])\n"
+                    "- target_ingredient: main ingredient for analytics or ranking (e.g. 'tomato', 'garlic', 'onion')\n"
+                    "- is_step_ranking: boolean, true if asking to rank recipes by fewest or most steps\n"
+                    "- substitute_ingredient: ingredient to remove or replace (e.g. 'egg', 'gelatin')\n"
+                    "- max_steps: integer if user specified a step limit (e.g. 6), otherwise null"
+                )
+                res = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": f"User query: \"{query}\"\nOutput JSON:"}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                    timeout=5.0
+                )
+                import json
+                parsed = json.loads(res.choices[0].message.content)
+                # Canonical intent normalization based on extracted semantic entities
+                if parsed.get("pantry_ingredients") and len(parsed["pantry_ingredients"]) > 0:
+                    parsed["intent"] = "MATCHING"
+                elif parsed.get("is_step_ranking"):
+                    parsed["intent"] = "ANALYTICS"
+                elif parsed.get("substitute_ingredient") and (parsed.get("cleaned_dish_or_recipe") or any(k in q_lower for k in ["without", "substitute", "replace", "eggless", "free"])):
+                    parsed["intent"] = "SUBSTITUTION"
+                elif parsed.get("exclusions") and len(parsed["exclusions"]) > 0 and any(k in q_lower for k in ["cannot", "can't", "allergy", "allergic", "no "]):
+                    parsed["intent"] = "RESTRICTION_REFINEMENT"
+                return parsed
+            except Exception:
+                pass
+
+        # Rule-based fallback if offline
+        intent = "SEARCH"
+        if any(w in q_lower for w in ["substitute", "substitution", "replace", "without egg", "without eggs", "without dairy", "eggless", "dairy-free"]):
+            intent = "SUBSTITUTION"
+        elif any(w in q_lower for w in ["how many", "what percentage", "percentage of", "fewest instruction steps", "fewest steps", "rank"]):
+            intent = "ANALYTICS"
+        elif any(w in q_lower for w in ["i have", "we have", "ingredients in my fridge", "pantry", "suggest recipes using"]):
+            intent = "MATCHING"
+        elif any(w in q_lower for w in ["cannot have", "can't have", "allergic to", "allergy", "no dairy", "no peanuts"]):
+            intent = "RESTRICTION_REFINEMENT"
+
+        return {
+            "intent": intent,
+            "cleaned_dish_or_recipe": None,
+            "pantry_ingredients": [],
+            "exclusions": [],
+            "target_ingredient": None,
+            "is_step_ranking": "fewest" in q_lower or "rank" in q_lower,
+            "substitute_ingredient": None,
+            "max_steps": 6 if ("6" in q_lower or "six" in q_lower) else None
+        }
