@@ -110,7 +110,6 @@ NOSH Recipe Intelligence
 │   ├── recipes_cleaned.json        # Curated 121,684 recipes (199.5 MB)
 │   ├── recipe_index.pkl            # Pre-indexed binary bundle (Loads in ~2.2s)
 │   └── nosh_sessions.db            # Persistent SQLite database for multi-turn threads & memory
-├── NOSH_Senior_Developer_Architecture_Guide.pdf  # 13-Page Comprehensive Technical Manual & Flowcharts
 ├── run_app.ps1                     # 1-Click application launcher
 ├── run_eval.ps1                    # 1-Click DeepEval test runner
 └── requirements.txt                # Python dependencies

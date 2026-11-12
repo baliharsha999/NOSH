@@ -7,3 +7,4 @@ __pycache__/
 data_recipes/*.db
 NOSH_Senior_Developer_Architecture_Guide.html
 NOSH_Senior_Developer_Architecture_Guide.pdf
+generate_senior_dev_guide.py
