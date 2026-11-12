@@ -232,17 +232,16 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
             restrictions = context_data.get("active_restrictions", [])
             if docs:
                 doc_lines = []
-                for idx, doc in enumerate(docs[:5], 1):
+                for idx, doc in enumerate(docs[:3], 1):
                     meta = getattr(doc, "metadata", {}) if not isinstance(doc, dict) else doc
-                    content = getattr(doc, "page_content", "") if not isinstance(doc, dict) else str(doc.get("ingredients", ""))
+                    content = getattr(doc, "page_content", "") if not isinstance(doc, dict) else str(doc)
                     doc_lines.append(
-                        f"{idx}. {meta.get('title')} (ID: {meta.get('id')}, Source: {meta.get('source')})\n"
-                        f"   - Steps: {meta.get('num_steps')} | Ingredients Count: {meta.get('num_ingredients')}\n"
-                        f"   - Verified Content: {content[:150].strip()}..."
+                        f"### {idx}. {meta.get('title')} (ID: `{meta.get('id')}`, Source: {meta.get('source')})\n"
+                        f"{content}\n"
                     )
                 return (
                     f"- Enforced Dietary Restrictions: {restrictions or 'None (Pantry neutral)'}\n"
-                    f"- Top Retrieved Recipes from Curated Corpus (100% Allergen Safe):\n" + "\n".join(doc_lines)
+                    f"- Top Curated Recipes Retrieved from Corpus:\n\n" + "\n".join(doc_lines)
                 )
 
         return fallback_text
