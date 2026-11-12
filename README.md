@@ -106,6 +106,9 @@ NOSH Recipe Intelligence
 │   │   ├── retriever.py            # Document retriever with Title Inverted Index (+150.0 boost)
 │   │   ├── llm_generator.py        # Semantic Query Parsing & Real-Time Token Streaming (Qwen 27B)
 │   │   ├── session_store.py        # Persistent SQLite conversation thread & turn memory store
+│   │   ├── embeddings.py           # 384-dimensional dense semantic embedding engine (LangChain)
+│   │   ├── vector_store.py         # FAISS IndexFlatIP dense vector store & cosine search
+│   │   ├── intent_router.py        # Dense semantic vector intent router with centroid cosine routing
 │   │   ├── graph_nodes.py          # Modular LangGraph execution nodes & conditional routers
 │   │   └── pipeline.py             # LangGraph StateGraph orchestrator with StreamWriter
 ├── frontend/

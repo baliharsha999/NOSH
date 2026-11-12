@@ -246,15 +246,15 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
 
         return fallback_text
 
-    def parse_query_semantics(self, query: str) -> Dict[str, Any]:
+    def parse_query_semantics(self, query: str, semantic_intent_prior: Optional[str] = None) -> Dict[str, Any]:
         """
-        Uses LLM (Groq) to accurately extract intent, dish names, pantry ingredients,
-        and exclusions without fragile string manipulation or regex.
-        Falls back to rule-based heuristics if LLM is unavailable or times out.
+        Uses LLM (Groq) with dense semantic intent prior to accurately extract intent,
+        dish names, pantry ingredients, and exclusions without fragile string manipulation.
+        Falls back to dense semantic vector routing if LLM is unavailable or times out.
         """
         q_lower = query.lower()
         # Fast guardrail check for absence of data
-        if any(w in q_lower for w in ["prep time", "preparation time", "calorie", "calories", "nutritional value", "how many calories"]):
+        if any(w in q_lower for w in ["prep time", "preparation time", "calorie", "calories", "nutritional value", "how many calories", "cook time"]):
             return {
                 "intent": "ABSENCE_GUARDRAIL",
                 "cleaned_dish_or_recipe": None,
@@ -280,11 +280,12 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
                     "- substitute_ingredient: ingredient to remove or replace (e.g. 'egg', 'gelatin')\n"
                     "- max_steps: integer if user specified a step limit (e.g. 6), otherwise null"
                 )
+                prior_hint = f" (Semantic Prior Intent: {semantic_intent_prior})" if semantic_intent_prior else ""
                 res = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
                         {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": f"User query: \"{query}\"\nOutput JSON:"}
+                        {"role": "user", "content": f"User query: \"{query}\"{prior_hint}\nOutput JSON:"}
                     ],
                     response_format={"type": "json_object"},
                     temperature=0.0,
@@ -301,20 +302,23 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
                     parsed["intent"] = "SUBSTITUTION"
                 elif parsed.get("exclusions") and len(parsed["exclusions"]) > 0 and any(k in q_lower for k in ["cannot", "can't", "allergy", "allergic", "no "]):
                     parsed["intent"] = "RESTRICTION_REFINEMENT"
+                elif not parsed.get("intent") and semantic_intent_prior:
+                    parsed["intent"] = semantic_intent_prior
                 return parsed
             except Exception:
                 pass
 
-        # Rule-based fallback if offline
-        intent = "SEARCH"
-        if any(w in q_lower for w in ["substitute", "substitution", "replace", "without egg", "without eggs", "without dairy", "eggless", "dairy-free"]):
-            intent = "SUBSTITUTION"
-        elif any(w in q_lower for w in ["how many", "what percentage", "percentage of", "fewest instruction steps", "fewest steps", "rank"]):
-            intent = "ANALYTICS"
-        elif any(w in q_lower for w in ["i have", "we have", "ingredients in my fridge", "pantry", "suggest recipes using"]):
-            intent = "MATCHING"
-        elif any(w in q_lower for w in ["cannot have", "can't have", "allergic to", "allergy", "no dairy", "no peanuts"]):
-            intent = "RESTRICTION_REFINEMENT"
+        # Dense semantic vector fallback if offline
+        intent = semantic_intent_prior or "SEARCH"
+        if not semantic_intent_prior:
+            if any(w in q_lower for w in ["substitute", "substitution", "replace", "without egg", "without eggs", "without dairy", "eggless", "dairy-free"]):
+                intent = "SUBSTITUTION"
+            elif any(w in q_lower for w in ["how many", "what percentage", "percentage of", "fewest instruction steps", "fewest steps", "rank"]):
+                intent = "ANALYTICS"
+            elif any(w in q_lower for w in ["i have", "we have", "ingredients in my fridge", "pantry", "suggest recipes using"]):
+                intent = "MATCHING"
+            elif any(w in q_lower for w in ["cannot have", "can't have", "allergic to", "allergy", "no dairy", "no peanuts"]):
+                intent = "RESTRICTION_REFINEMENT"
 
         return {
             "intent": intent,

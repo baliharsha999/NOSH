@@ -2,7 +2,7 @@
 """
 backend/src/vector_store.py
 ----------------------------
-Open-Source FAISS Vector Database for Semantic Recipe Retrieval.
+Open-Source FAISS Vector Database for Dense Semantic Recipe Retrieval.
 
 Solves the industry-standard vector search requirement:
   1. Vector Database: FAISS (`faiss-cpu`) IndexFlatIP (Inner Product / Cosine Similarity).
@@ -16,88 +16,18 @@ Solves the industry-standard vector search requirement:
 
 import os
 import sys
-import hashlib
 from pathlib import Path
 from typing import List, Dict, Set, Tuple, Any, Optional
 import numpy as np
-
 import faiss
+
+try:
+    from backend.src.embeddings import DenseSemanticEmbedder
+except ImportError:
+    from embeddings import DenseSemanticEmbedder
 
 
 DEFAULT_FAISS_DIR = Path(__file__).resolve().parent.parent.parent / "data_recipes" / "faiss_index"
-
-
-class DenseSemanticEmbedder:
-    """
-    Open-source 384-dimensional dense semantic embedding engine.
-    Supports FastEmbed (all-MiniLM-L6-v2 / BGE) when connected, with an instant
-    zero-dependency subword semantic projection fallback when offline.
-    """
-
-    def __init__(self, dimension: int = 384):
-        self.dimension = dimension
-        self._fastembed_model = None
-        self._init_fastembed()
-
-    def _init_fastembed(self):
-        """Attempts to load FastEmbed open-source model only if enabled or cached."""
-        try:
-            if os.environ.get("ENABLE_REMOTE_EMBEDDINGS", "").lower() == "true":
-                from fastembed import TextEmbedding
-                self._fastembed_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
-            else:
-                self._fastembed_model = None
-        except Exception:
-            self._fastembed_model = None
-
-    def embed_text(self, text: str) -> np.ndarray:
-        """Embeds single text string into a 384-dim normalized vector."""
-        return self.embed_batch([text])[0].reshape(1, -1)
-
-    def embed_batch(self, texts: List[str]) -> np.ndarray:
-        """
-        Embeds a batch of texts into 384-dimensional L2-normalized float32 vectors.
-        """
-        if not texts:
-            return np.zeros((0, self.dimension), dtype=np.float32)
-
-        # 1. Try FastEmbed if model is warm
-        if self._fastembed_model is not None:
-            try:
-                embeddings = list(self._fastembed_model.embed(texts))
-                vecs = np.array(embeddings, dtype=np.float32)
-                faiss.normalize_L2(vecs)
-                return vecs
-            except Exception:
-                pass
-
-        # 2. Resilient Open-Source Subword Projection Vectorizer (Offline Zero-Crash Fallback)
-        # Projects tokens & character n-grams into a dense 384-dim space with L2 normalization
-        vecs = np.zeros((len(texts), self.dimension), dtype=np.float32)
-        for row_idx, text in enumerate(texts):
-            tokens = text.lower().replace(",", " ").replace("-", " ").split()
-            if not tokens:
-                continue
-            for tok in tokens:
-                # Token hash projection
-                h = int(hashlib.md5(tok.encode("utf-8")).hexdigest(), 16)
-                idx1 = h % self.dimension
-                idx2 = (h >> 16) % self.dimension
-                idx3 = (h >> 32) % self.dimension
-                vecs[row_idx, idx1] += 1.0
-                vecs[row_idx, idx2] += 0.5
-                vecs[row_idx, idx3] += 0.25
-
-                # Subword n-grams (captures morphological roots like pasta, tomato, egg)
-                for n in (3, 4):
-                    if len(tok) >= n:
-                        for i in range(len(tok) - n + 1):
-                            ngram = tok[i:i + n]
-                            nh = int(hashlib.sha256(ngram.encode("utf-8")).hexdigest(), 16)
-                            vecs[row_idx, nh % self.dimension] += 0.15
-
-        faiss.normalize_L2(vecs)
-        return vecs
 
 
 class FAISSRecipeVectorStore:
@@ -169,9 +99,38 @@ class FAISSRecipeVectorStore:
 
         return results
 
+    def search_dense(
+        self,
+        query: str,
+        top_k: int = 10,
+        disqualified_ids: Optional[Set[str]] = None
+    ) -> List[Tuple[str, float]]:
+        """
+        Searches the global FAISS index directly using dense semantic vector similarity,
+        filtering out any disqualified IDs.
+        """
+        if self.index.ntotal == 0:
+            return []
+
+        disqualified = disqualified_ids or set()
+        q_vec = self.embedder.embed_text(query)
+        fetch_k = min(top_k * 3, self.index.ntotal)
+        scores, indices = self.index.search(q_vec, fetch_k)
+
+        results: List[Tuple[str, float]] = []
+        for score, idx in zip(scores[0], indices[0]):
+            if 0 <= idx < len(self.recipe_ids):
+                rid = self.recipe_ids[idx]
+                if rid not in disqualified:
+                    results.append((rid, float(score)))
+                    if len(results) >= top_k:
+                        break
+
+        return results
+
 
 # Global Singleton Vector Store
-_FAISS_STORE = None
+_FAISS_STORE: Optional[FAISSRecipeVectorStore] = None
 
 def get_faiss_store() -> FAISSRecipeVectorStore:
     """Returns singleton instance of the FAISS recipe vector store."""

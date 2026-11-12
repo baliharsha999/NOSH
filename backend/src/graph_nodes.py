@@ -39,6 +39,7 @@ try:
         ABSENCE_OF_DATA_EXPLANATION
     )
     from backend.src.session_store import SQLiteSessionStore
+    from backend.src.intent_router import get_semantic_router, SemanticIntentRouter
 except ImportError:
     from ingestion import RecipeIndexBundle
     from analytics_engine import AnalyticsEngine
@@ -53,6 +54,7 @@ except ImportError:
         ABSENCE_OF_DATA_EXPLANATION
     )
     from session_store import SQLiteSessionStore
+    from intent_router import get_semantic_router, SemanticIntentRouter
 
 
 # =============================================================================
@@ -129,6 +131,7 @@ class GraphNodes:
         self.substitution = substitution
         self.llm = llm
         self.session_store = session_store
+        self.semantic_router = get_semantic_router()
 
     def node_guardrail(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
         """Node 1: Evaluates input query against 5-Pillar safety & schema guardrails."""
@@ -151,13 +154,30 @@ class GraphNodes:
         }
 
     def node_intent_router(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
-        """Node 2: Intelligent Query Understanding & Entity Extraction powered by Groq LLM with deterministic fallback."""
+        """Node 2: Dense Semantic Vector Intent Routing + LLM Entity Extraction."""
         user_query = state.get("user_query", "")
-        parsed = self.llm.parse_query_semantics(user_query)
 
-        detected_intent = parsed.get("intent", "SEARCH")
+        # 1. Execute Dense Semantic Vector Intent Routing (Cosine Similarity in R^384)
+        semantic_route = self.semantic_router.route_query(user_query)
+        semantic_intent = semantic_route.get("top_intent", "SEARCH")
+        semantic_entities = semantic_route.get("semantic_entities", {})
 
-        # Handle Absence-of-Data guardrail
+        # Fast Guardrail Interception
+        if semantic_intent == "ABSENCE_GUARDRAIL":
+            writer(ABSENCE_OF_DATA_EXPLANATION)
+            return {
+                "guardrail_blocked": True,
+                "guardrail_triggered": "AbsenceOfDataGuardrail",
+                "intent": "ABSENCE_GUARDRAIL",
+                "response": ABSENCE_OF_DATA_EXPLANATION,
+                "data": {"guardrail_triggered": "absence_of_data", "field_requested": "prep_time_or_calories"}
+            }
+
+        # 2. Extract Entities using Groq Qwen with Dense Semantic Intent as prior
+        parsed = self.llm.parse_query_semantics(user_query, semantic_intent_prior=semantic_intent)
+        detected_intent = parsed.get("intent") or semantic_intent
+
+        # Secondary check for Absence-of-Data
         if detected_intent == "ABSENCE_GUARDRAIL":
             writer(ABSENCE_OF_DATA_EXPLANATION)
             return {
@@ -168,15 +188,22 @@ class GraphNodes:
                 "data": {"guardrail_triggered": "absence_of_data", "field_requested": "prep_time_or_calories"}
             }
 
+        # Merge extracted entities from LLM with semantic router entities as fallback
+        cleaned_dish = parsed.get("cleaned_dish_or_recipe") or semantic_entities.get("cleaned_dish_or_recipe")
+        pantry_ings = parsed.get("pantry_ingredients") or semantic_entities.get("pantry_ingredients", [])
+        exclusions = parsed.get("exclusions") or semantic_entities.get("exclusions", [])
+        sub_ing = parsed.get("substitute_ingredient") or semantic_entities.get("substitute_ingredient")
+        max_steps = parsed.get("max_steps") if parsed.get("max_steps") is not None else semantic_entities.get("max_steps")
+
         return {
             "intent": detected_intent,
-            "cleaned_dish_or_recipe": parsed.get("cleaned_dish_or_recipe"),
-            "pantry_ingredients": parsed.get("pantry_ingredients", []),
-            "exclusions": parsed.get("exclusions", []),
+            "cleaned_dish_or_recipe": cleaned_dish,
+            "pantry_ingredients": pantry_ings,
+            "exclusions": exclusions,
             "target_ingredient": parsed.get("target_ingredient"),
-            "is_step_ranking": parsed.get("is_step_ranking", False),
-            "substitute_ingredient": parsed.get("substitute_ingredient"),
-            "max_steps": parsed.get("max_steps")
+            "is_step_ranking": parsed.get("is_step_ranking", semantic_entities.get("is_step_ranking", False)),
+            "substitute_ingredient": sub_ing,
+            "max_steps": max_steps
         }
 
     def node_analytics(self, state: PipelineState) -> Dict[str, Any]:
