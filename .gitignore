@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 *.db
 data_recipes/*.db
+NOSH_Senior_Developer_Architecture_Guide.html
+NOSH_Senior_Developer_Architecture_Guide.pdf
