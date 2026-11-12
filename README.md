@@ -106,6 +106,7 @@ NOSH Recipe Intelligence
 │   │   ├── retriever.py            # Document retriever with Title Inverted Index (+150.0 boost)
 │   │   ├── llm_generator.py        # Semantic Query Parsing & Real-Time Token Streaming (Qwen 27B)
 │   │   ├── session_store.py        # Persistent SQLite conversation thread & turn memory store
+│   │   ├── graph_nodes.py          # Modular LangGraph execution nodes & conditional routers
 │   │   └── pipeline.py             # LangGraph StateGraph orchestrator with StreamWriter
 ├── frontend/
 │   └── streamlit_app.py            # Streamlit real-time streaming conversational UI (Port 8501)
