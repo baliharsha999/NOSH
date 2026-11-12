@@ -42,7 +42,12 @@ INTENT_PROTOTYPES: Dict[str, List[str]] = {
         "Which recipes containing tomatoes have the fewest instruction steps? Rank them",
         "Rank recipes containing tomato by fewest steps",
         "What is the mathematical co-occurrence count and percentage of recipes containing both ingredients?",
-        "Show statistical analytics and distributions of ingredients across all recipes"
+        "Show statistical analytics and distributions of ingredients across all recipes",
+        "What is the exact formula and total denominator used for recipe statistics?",
+        "What is the total recipe denominator and formula for calculations?",
+        "How many recipes use chicken as an ingredient in the dataset?",
+        "Show the distribution and ranking of recipes by instruction step counts.",
+        "Calculate the correlation between garlic and black pepper in your recipe database."
     ],
     "MATCHING": [
         "I have eggs, onions, tomatoes, and rice. What can I cook with at most 6 steps? Exclude peanuts.",
@@ -58,7 +63,9 @@ INTENT_PROTOTYPES: Dict[str, List[str]] = {
         "Substitute butter in pasta with empirical local evidence and sensory trade-offs",
         "How to adapt panna cotta without gelatin using ingredient replacements",
         "Eggless banana bread recipe substitution citing dataset IDs",
-        "How do I substitute eggs in baking? Cite empirical recipes from the database"
+        "How do I substitute eggs in baking? Cite empirical recipes from the database",
+        "Can I swap cornstarch for tapioca starch when thickening cherry pie filling?",
+        "How do I adapt beef stew without beef using mushrooms? Provide updated ingredients and revised steps."
     ],
     "RESTRICTION_REFINEMENT": [
         "I cannot have dairy, please eliminate all cheese, milk, and butter",

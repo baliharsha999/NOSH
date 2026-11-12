@@ -294,12 +294,12 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
                 import json
                 parsed = json.loads(res.choices[0].message.content)
                 # Canonical intent normalization based on extracted semantic entities
-                if parsed.get("pantry_ingredients") and len(parsed["pantry_ingredients"]) > 0:
-                    parsed["intent"] = "MATCHING"
+                if parsed.get("substitute_ingredient") or (semantic_intent_prior == "SUBSTITUTION") or any(k in q_lower for k in ["without", "substitute", "replace", "eggless", "adapt", "swap"]):
+                    parsed["intent"] = "SUBSTITUTION"
                 elif parsed.get("is_step_ranking"):
                     parsed["intent"] = "ANALYTICS"
-                elif parsed.get("substitute_ingredient") and (parsed.get("cleaned_dish_or_recipe") or any(k in q_lower for k in ["without", "substitute", "replace", "eggless", "free"])):
-                    parsed["intent"] = "SUBSTITUTION"
+                elif parsed.get("pantry_ingredients") and len(parsed["pantry_ingredients"]) > 0:
+                    parsed["intent"] = "MATCHING"
                 elif parsed.get("exclusions") and len(parsed["exclusions"]) > 0 and any(k in q_lower for k in ["cannot", "can't", "allergy", "allergic", "no "]):
                     parsed["intent"] = "RESTRICTION_REFINEMENT"
                 elif not parsed.get("intent") and semantic_intent_prior:

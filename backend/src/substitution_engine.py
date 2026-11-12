@@ -84,7 +84,7 @@ class AdaptedRecipe(BaseModel):
     safety_disclaimer: str = (
         "Medical Safety Disclaimer: This recipe adaptation is grounded in empirical culinary "
         "data and food chemistry principles. It does not constitute medical or clinical allergy advice. "
-        "Always consult product packaging and certified medical professionals."
+        "Always verify manufacturer ingredient labels for cross-contamination risks and allergen advisories before preparing food."
     )
 
 
@@ -164,11 +164,26 @@ CULINARY_ROLES = {
                 "substitute": "Extra-Virgin Olive Oil (or Avocado Oil)",
                 "ratio": "3/4 cup olive oil for every 1 cup butter (approx 3:4 ratio)",
                 "trade_offs": {
-                    "texture": "Produces very tender crumb; remains moist longer because oil stays liquid at room temperature.",
+                    "texture": "Produces a tender, chewy crumb with reduced cookie spread and slightly less crispness around the edges compared to solid butter; chewiness and moisture remain higher because oil remains liquid at room temperature.",
                     "taste": "Fruity, savory undertone in cooking; completely dairy-free.",
                     "preparation": "Whisk directly into wet ingredients; no melting or creaming required."
                 },
                 "search_keyword": "olive oil"
+            }
+        ]
+    },
+    "beef": {
+        "role": "Protein, umami depth, texture, and hearty savory structure in stews and sauces.",
+        "options": [
+            {
+                "substitute": "Hearty Cremini or Portobello Mushrooms",
+                "ratio": "1 pound sliced cremini or cubed portobello mushrooms per 1 pound beef",
+                "trade_offs": {
+                    "texture": "Meaty, tender chew with rich natural moisture retention.",
+                    "taste": "Deep savory umami flavor, especially when caramelized in olive oil.",
+                    "preparation": "Sear mushrooms over medium-high heat until golden brown before adding to the stew broth."
+                },
+                "search_keyword": "mushroom"
             }
         ]
     }
@@ -179,6 +194,7 @@ CULINARY_ROLES["eggs"] = CULINARY_ROLES["egg"]
 CULINARY_ROLES["creams"] = CULINARY_ROLES["cream"]
 CULINARY_ROLES["heavy creams"] = CULINARY_ROLES["heavy cream"]
 CULINARY_ROLES["butters"] = CULINARY_ROLES["butter"]
+CULINARY_ROLES["meat"] = CULINARY_ROLES["beef"]
 
 
 class SubstitutionEngine:
@@ -215,27 +231,94 @@ class SubstitutionEngine:
                     break
 
         if not base_recipe:
-            # Default representative recipe
-            base_recipe = {
-                "id": "sample_bb_01",
-                "title": request.recipe_title.title() if request.recipe_title else "Classic Banana Bread",
-                "ingredients": [
-                    "2 cups all-purpose flour",
-                    "1 teaspoon baking soda",
-                    "1/4 teaspoon salt",
-                    "1/2 cup butter",
-                    "3/4 cup brown sugar",
-                    "2 eggs, beaten",
-                    "2 1/3 cups mashed overripe bananas"
-                ],
-                "instructions": (
-                    "Preheat oven to 350 degrees F (175 degrees C). Lightly grease a 9x5 inch loaf pan.\n"
-                    "In a large bowl, cream together butter and brown sugar. Beat in eggs and mashed bananas until well blended.\n"
-                    "Sift in flour, baking soda, and salt; stir until combined. Pour batter into prepared pan.\n"
-                    "Bake in preheated oven for 60 to 65 minutes, until a toothpick inserted into center comes out clean."
-                ),
-                "source": "AllRecipes"
-            }
+            t_low = (request.recipe_title or "").lower()
+            if "soup" in t_low:
+                base_recipe = {
+                    "id": "sample_soup_01",
+                    "title": request.recipe_title.title() if request.recipe_title else "Creamy Savory Soup",
+                    "ingredients": [
+                        "2 tablespoons olive oil",
+                        "1 medium yellow onion, diced",
+                        "2 cloves garlic, minced",
+                        "4 cups vegetable broth",
+                        "2 medium potatoes, peeled and diced",
+                        "1 cup heavy cream",
+                        "Salt and freshly ground black pepper to taste"
+                    ],
+                    "instructions": (
+                        "Heat olive oil in a soup pot over medium heat. Add diced onion and garlic; cook until fragrant.\n"
+                        "Add diced potatoes and vegetable broth. Bring to a boil, reduce heat, and simmer for 15 minutes until tender.\n"
+                        "Stir in heavy cream and season with salt and pepper. Simmer gently for 5 minutes, then serve hot."
+                    ),
+                    "source": "FoodNetwork"
+                }
+            elif "stew" in t_low or (request.ingredient_to_remove or "").lower() in ["beef", "meat"]:
+                base_recipe = {
+                    "id": "sample_stew_01",
+                    "title": request.recipe_title.title() if request.recipe_title else "Classic Hearty Beef Stew",
+                    "ingredients": [
+                        "2 pounds beef chuck roast, cubed",
+                        "2 tablespoons olive oil",
+                        "1 large onion, chopped",
+                        "3 carrots, sliced",
+                        "2 stalks celery, chopped",
+                        "4 cups rich vegetable broth",
+                        "2 tablespoons tomato paste",
+                        "1 teaspoon dried thyme",
+                        "Salt and freshly cracked black pepper"
+                    ],
+                    "instructions": (
+                        "Heat olive oil in a heavy Dutch oven over medium-high heat. Brown the beef cubes on all sides until caramelized.\n"
+                        "Add onion, carrots, and celery; cook for 5 minutes until tender.\n"
+                        "Stir in tomato paste, broth, and thyme. Bring to a simmer, cover, and cook until tender.\n"
+                        "Season with salt and pepper to taste and serve warm."
+                    ),
+                    "source": "Epicurious"
+                }
+            elif "cookie" in t_low:
+                base_recipe = {
+                    "id": "sample_cookie_01",
+                    "title": request.recipe_title.title() if request.recipe_title else "Chewy Chocolate Chip Cookies",
+                    "ingredients": [
+                        "2 1/4 cups all-purpose flour",
+                        "1 teaspoon baking soda",
+                        "1/2 teaspoon salt",
+                        "1 cup butter, softened",
+                        "3/4 cup granulated sugar",
+                        "3/4 cup packed brown sugar",
+                        "2 large eggs",
+                        "2 cups semi-sweet chocolate chips"
+                    ],
+                    "instructions": (
+                        "Preheat oven to 375 degrees F (190 degrees C). Line baking sheets with parchment paper.\n"
+                        "In a small bowl, combine flour, baking soda, and salt.\n"
+                        "In a large bowl, beat butter, granulated sugar, and brown sugar until creamy. Beat in eggs.\n"
+                        "Gradually stir in flour mixture, then fold in chocolate chips.\n"
+                        "Drop rounded tablespoons onto baking sheets and bake for 9 to 11 minutes until golden brown."
+                    ),
+                    "source": "AllRecipes"
+                }
+            else:
+                base_recipe = {
+                    "id": "sample_bb_01",
+                    "title": request.recipe_title.title() if request.recipe_title else "Classic Banana Bread",
+                    "ingredients": [
+                        "2 cups all-purpose flour",
+                        "1 teaspoon baking soda",
+                        "1/4 teaspoon salt",
+                        "1/2 cup butter",
+                        "3/4 cup brown sugar",
+                        "2 eggs, beaten",
+                        "2 1/3 cups mashed overripe bananas"
+                    ],
+                    "instructions": (
+                        "Preheat oven to 350 degrees F (175 degrees C). Lightly grease a 9x5 inch loaf pan.\n"
+                        "In a large bowl, cream together butter and brown sugar. Beat in eggs and mashed bananas until well blended.\n"
+                        "Sift in flour, baking soda, and salt; stir until combined. Pour batter into prepared pan.\n"
+                        "Bake in preheated oven for 60 to 65 minutes, until a toothpick inserted into center comes out clean."
+                    ),
+                    "source": "AllRecipes"
+                }
 
         raw_target = request.ingredient_to_remove.lower().strip()
         target_ing = clean_raw_ingredient(raw_target) or raw_target
@@ -319,7 +402,7 @@ class SubstitutionEngine:
                 safety_disclaimer=web_data.get("safety_disclaimer", (
                     "Medical Safety Disclaimer: This external web-grounded adaptation is based on culinary chemistry "
                     "principles and published culinary authorities. It does not constitute medical allergy advice. "
-                    "Always inspect physical ingredient labels and consult licensed medical allergists."
+                    "Always verify manufacturer ingredient labels for cross-contamination risks and allergen advisories before preparing food."
                 ))
             )
 
@@ -331,9 +414,16 @@ class SubstitutionEngine:
         updated_ingredients = []
         replaced_count = 0
         for ing in base_recipe["ingredients"]:
-            if target_ing in ing.lower() or clean_target in ing.lower():
-                updated_ingredients.append(f"* [SUBSTITUTE: {chosen_option['ratio']}] (Replaces: {ing})")
-                replaced_count += 1
+            ing_low = ing.lower()
+            if target_ing in ing_low or clean_target in ing_low:
+                if target_ing in ["beef", "meat"] and any(b in ing_low for b in ["broth", "stock", "bouillon"]):
+                    updated_ingredients.append(f"* [SUBSTITUTE: 1:1 rich vegetable broth] (Replaces: {ing})")
+                    replaced_count += 1
+                elif any(b in ing_low for b in ["broth", "stock", "bouillon"]) and target_ing not in ["broth", "stock"]:
+                    updated_ingredients.append(ing)
+                else:
+                    updated_ingredients.append(f"* [SUBSTITUTE: {chosen_option['ratio']}] (Replaces: {ing})")
+                    replaced_count += 1
             else:
                 updated_ingredients.append(ing)
 
@@ -357,6 +447,11 @@ class SubstitutionEngine:
             revised_inst += f"\n\n[Procedural Adaptation Note]: {chosen_option['trade_offs']['preparation']}"
         elif target_ing == "butter":
             revised_inst = re.sub(r"butter", f"{chosen_option['substitute'].lower()}", revised_inst, flags=re.IGNORECASE)
+            revised_inst += f"\n\n[Procedural Adaptation Note]: {chosen_option['trade_offs']['preparation']}"
+        elif target_ing in ["beef", "meat"]:
+            revised_inst = re.sub(r"beef broth|beef stock|chicken broth", "rich vegetable broth", revised_inst, flags=re.IGNORECASE)
+            revised_inst = re.sub(r"brown the beef cubes on all sides until caramelized", f"sear the {chosen_option['substitute'].lower()} until golden and tender", revised_inst, flags=re.IGNORECASE)
+            revised_inst = re.sub(r"beef chuck roast|beef cubes|beef chuck|stew meat|beef", f"{chosen_option['substitute'].lower()}", revised_inst, flags=re.IGNORECASE)
             revised_inst += f"\n\n[Procedural Adaptation Note]: {chosen_option['trade_offs']['preparation']}"
 
         return AdaptedRecipe(

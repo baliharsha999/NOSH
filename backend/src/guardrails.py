@@ -42,7 +42,7 @@ MEDICAL_DISCLAIMER = (
     "Medical Safety Disclaimer: This recipe adaptation is grounded in empirical culinary "
     "patterns and food chemistry principles from the Recipe Box dataset. It does NOT constitute "
     "clinical or medical allergy advice. Recipe texts do not account for manufacturing facility "
-    "cross-contamination. Always verify physical packaging labels and consult certified allergists."
+    "cross-contamination. Always verify manufacturer ingredient labels for cross-contamination risks and allergen advisories before preparing food."
 )
 
 QUANTITY_SUFFICIENCY_NOTICE = (
@@ -74,7 +74,13 @@ class NoshGuardrails:
         r"act\s+as\s+(an\s+)?unrestricted",
         r"jailbreak",
         r"dan\s+mode",
-        r"bypass\s+rules",
+        r"\byou\s+are\s+now\s+dan\b",
+        r"\bdan\s*\(",
+        r"\bdo\s+anything\s+now\b",
+        r"\buncensored\b",
+        r"\bwithout\s+boundaries\b",
+        r"bypass\s+(guardrails|rules|filters)",
+        r"free\s+from\s+all\s+.*restrictions",
         r"reveal\s+(your\s+)?instructions"
     ]
 

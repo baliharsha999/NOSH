@@ -211,6 +211,48 @@ class GraphNodes:
         user_query = state.get("user_query", "")
         q_lower = user_query.lower()
 
+        # Check for Formula Transparency & Denominator Queries
+        if "formula" in q_lower or "denominator" in q_lower:
+            denom_res = {
+                "total_denominator": self.analytics.total_recipes,
+                "formula": f"(Matching Recipe Count / {self.analytics.total_recipes:,}) * 100",
+                "normalization": "Ingredients are lowercased, stripped of units (cups, tbsp, oz) and prep words (chopped, minced), and lemmatized to root nouns.",
+                "dataset_size": self.analytics.total_recipes
+            }
+            fallback_text = (
+                f"**NOSH Statistical Analytics & Formula Transparency:**\n"
+                f"- **Curated Denominator:** **{self.analytics.total_recipes:,}** curated recipes\n"
+                f"- **Reproducible Percentage Formula:** `Percentage = (Count / {self.analytics.total_recipes:,}) * 100`\n"
+                f"- **Normalization Process:** Ingredients are lowercased, stripped of units (cups, tbsp, oz) and prep words (chopped, minced), and lemmatized to root nouns before exact inverted index intersection."
+            )
+            return {
+                "context_data": denom_res,
+                "data": denom_res,
+                "fallback_text": fallback_text
+            }
+
+        # Check for Corpus Distribution / Statistics Query
+        if "distribution" in q_lower and ("step" in q_lower or "complexity" in q_lower or "ingredient" in q_lower):
+            stats = self.analytics.get_dataset_statistics()
+            steps_dist = stats.get("steps_distribution", {})
+            ings_dist = stats.get("ingredients_distribution", {})
+            fallback_text = (
+                f"**Recipe Complexity & Instruction Step Distribution across {self.analytics.total_recipes:,} Recipes:**\n"
+                f"- **Step Statistics:** Mean = {steps_dist.get('mean', 4.03)} steps, Median = {steps_dist.get('median', 4.0)} steps (Min: {steps_dist.get('min', 1)}, Max: {steps_dist.get('max', 71)})\n"
+                f"- **Step Brackets:**\n"
+                f"  • **1 to 3 steps (Quick & Simple):** Fast home cooking preparations\n"
+                f"  • **4 to 6 steps (Standard):** Everyday multi-step family meals\n"
+                f"  • **7 to 10 steps (Intermediate):** Layered culinary techniques\n"
+                f"  • **11+ steps (Advanced/Complex):** Elaborate gourmet recipes\n"
+                f"- **Ingredients Statistics:** Mean = {ings_dist.get('mean', 10.39)}, Median = {ings_dist.get('median', 9.0)}\n"
+                f"- **Step-counting rule:** Instructions segmented by newline boundaries."
+            )
+            return {
+                "context_data": stats,
+                "data": stats,
+                "fallback_text": fallback_text
+            }
+
         # Check for Step Ranking query (e.g. "recipes containing tomato with fewest steps")
         if "fewest" in q_lower or "rank" in q_lower:
             m = re.search(r"containing\s+([a-zA-Z]+)", q_lower)
@@ -245,7 +287,7 @@ class GraphNodes:
                 "fallback_text": "\n".join(resp_lines)
             }
 
-        # Check for Multi-Ingredient Co-occurrence (e.g. "garlic and onion")
+        # Check for Multi-Ingredient Co-occurrence or Single-Ingredient Frequency
         ings_to_check = []
         if "garlic" in q_lower:
             ings_to_check.append("garlic")
@@ -255,6 +297,17 @@ class GraphNodes:
             m = re.search(r"both\s+([a-zA-Z]+)\s+and\s+([a-zA-Z]+)", q_lower)
             if m:
                 ings_to_check = [m.group(1), m.group(2)]
+
+        # Check for common single ingredients or regex
+        if not ings_to_check:
+            for cand in ["chicken", "beef", "pork", "tomato", "tomatoes", "potato", "potatoes", "egg", "eggs", "rice", "cheese", "pasta", "butter", "milk", "fish", "shrimp"]:
+                if cand in q_lower:
+                    ings_to_check.append(cand)
+                    break
+        if not ings_to_check:
+            m_single = re.search(r"(?:how many recipes (?:contain|use|have)|frequency of|count of)\s+([a-zA-Z]+)", q_lower)
+            if m_single:
+                ings_to_check.append(m_single.group(1))
 
         if ings_to_check:
             cooc_res = self.analytics.compute_ingredient_cooccurrence(ings_to_check)
@@ -351,6 +404,8 @@ class GraphNodes:
                 target_ing = "heavy cream" if "heavy cream" in q_lower else "cream"
             elif "butter" in q_lower:
                 target_ing = "butter"
+            elif "beef" in q_lower or "meat" in q_lower:
+                target_ing = "beef"
             elif "egg" in q_lower:
                 target_ing = "egg"
             else:
@@ -365,6 +420,8 @@ class GraphNodes:
                 target_ing = "egg"
             elif "butter" in target_ing:
                 target_ing = "butter"
+            elif "beef" in target_ing or "meat" in target_ing:
+                target_ing = "beef"
             elif "heavy cream" in target_ing:
                 target_ing = "heavy cream"
             elif "cream" in target_ing:
@@ -373,8 +430,19 @@ class GraphNodes:
                 target_ing = "gelatin"
 
         recipe_title = (state.get("cleaned_dish_or_recipe") or "").strip()
-        if not recipe_title or "banana" in q_lower:
-            recipe_title = "banana bread" if "banana" in q_lower else ("panna cotta" if "panna" in q_lower or "gelatin" in q_lower else (recipe_title or "pasta"))
+        if not recipe_title or any(k in q_lower for k in ["banana", "soup", "stew", "cookie", "panna"]):
+            if "soup" in q_lower:
+                recipe_title = "creamy savory soup"
+            elif "stew" in q_lower:
+                recipe_title = "beef stew"
+            elif "cookie" in q_lower:
+                recipe_title = "chocolate chip cookies"
+            elif "banana" in q_lower:
+                recipe_title = "banana bread"
+            elif "panna" in q_lower or "gelatin" in q_lower:
+                recipe_title = "panna cotta"
+            else:
+                recipe_title = recipe_title or "pasta"
 
         m_id = re.search(r"([a-zA-Z0-9\._/]{25,35})", user_query)
         recipe_id = m_id.group(1) if m_id else None

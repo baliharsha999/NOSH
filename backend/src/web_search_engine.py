@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 backend/src/web_search_engine.py
 --------------------------------
@@ -275,7 +274,7 @@ You must output a JSON object with EXACTLY the following keys:
     "texture": "{authority_info['sensory_trade_offs']['texture']}",
     "preparation": "{authority_info['sensory_trade_offs']['preparation']}"
   }},
-  "safety_disclaimer": "Medical Safety Disclaimer: This external web-grounded adaptation is based on culinary chemistry principles and published culinary authorities. It does not constitute medical allergy advice. Always inspect physical ingredient labels and consult licensed medical allergists."
+  "safety_disclaimer": "Medical Safety Disclaimer: This external web-grounded adaptation is based on culinary chemistry principles and published culinary authorities. It does not constitute medical allergy advice. Always verify manufacturer ingredient labels for cross-contamination risks and allergen advisories before preparing food."
 }}
 """
         try:
@@ -358,6 +357,6 @@ You must output a JSON object with EXACTLY the following keys:
             "safety_disclaimer": (
                 "Medical Safety Disclaimer: This external web-grounded adaptation is based on culinary chemistry "
                 "principles and published culinary authorities. It does not constitute medical allergy advice. "
-                "Always inspect physical ingredient labels and consult licensed medical allergists."
+                "Always verify manufacturer ingredient labels for cross-contamination risks and allergen advisories before preparing food."
             )
         }
