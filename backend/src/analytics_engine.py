@@ -32,8 +32,12 @@ from typing import List, Dict, Set, Any, Optional, Tuple
 import pandas as pd
 import numpy as np
 
-from normalization import clean_raw_ingredient, extract_normalized_keys
-from ingestion import RecipeIndexBundle, get_index_bundle
+try:
+    from backend.src.normalization import clean_raw_ingredient, extract_normalized_keys
+    from backend.src.ingestion import RecipeIndexBundle, get_index_bundle
+except ImportError:
+    from normalization import clean_raw_ingredient, extract_normalized_keys
+    from ingestion import RecipeIndexBundle, get_index_bundle
 
 
 class AnalyticsEngine:

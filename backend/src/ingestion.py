@@ -21,7 +21,10 @@ import pickle
 from typing import Dict, Set, List, Any, Optional
 from dataclasses import dataclass
 import pandas as pd
-from normalization import extract_normalized_keys, detect_allergens, clean_raw_ingredient
+try:
+    from backend.src.normalization import extract_normalized_keys, detect_allergens, clean_raw_ingredient
+except ImportError:
+    from normalization import extract_normalized_keys, detect_allergens, clean_raw_ingredient
 
 
 @dataclass

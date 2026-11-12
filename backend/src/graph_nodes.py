@@ -134,9 +134,10 @@ class GraphNodes:
         self.semantic_router = get_semantic_router()
 
     def node_guardrail(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
-        """Node 1: Evaluates input query against 5-Pillar safety & schema guardrails."""
+        """Node 1: Evaluates input query against 5-Pillar safety, schema guardrails, and LLM prompt injection detector."""
         user_query = state.get("user_query", "")
-        guard_check = NoshGuardrails.check_input_query(user_query)
+        llm_client = self.llm.client if (self.llm and self.llm.is_available()) else None
+        guard_check = NoshGuardrails.check_input_query(user_query, llm_client=llm_client)
 
         if not guard_check.passed:
             msg = guard_check.message or ""

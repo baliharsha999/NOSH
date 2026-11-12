@@ -26,8 +26,12 @@ Key Architecture Features:
 from typing import List, Dict, Set, Any, Optional
 from pydantic import BaseModel, Field
 
-from normalization import clean_raw_ingredient, extract_normalized_keys, ALLERGEN_TAXONOMY
-from ingestion import RecipeIndexBundle, get_index_bundle
+try:
+    from backend.src.normalization import clean_raw_ingredient, extract_normalized_keys, ALLERGEN_TAXONOMY
+    from backend.src.ingestion import RecipeIndexBundle, get_index_bundle
+except ImportError:
+    from normalization import clean_raw_ingredient, extract_normalized_keys, ALLERGEN_TAXONOMY
+    from ingestion import RecipeIndexBundle, get_index_bundle
 
 
 class MatchRequest(BaseModel):

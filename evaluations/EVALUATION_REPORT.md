@@ -1,5 +1,5 @@
 # NOSH Conversational Recipe Intelligence — DeepEval Evaluation Report
-**Date:** 2026-11-12 23:22:49  
+**Date:** 2026-11-13 00:05:40  
 **Judge Model:** `Groq qwen/qwen3.8-27b` via DeepEval `DeepEvalBaseLLM`  
 **Pass Rate:** **25/25 (100.0%)** — **PERFECT (0 ERROR)**  
 
@@ -76,7 +76,7 @@ The NOSH Conversational Recipe Intelligence Pipeline was rigorously evaluated us
 ### Case 7: 7. Matcher: Strict Allergen Exclusion (Shellfish & Tree Nuts)
 - **Component:** `MATCHER` | **Task:** `Task 2`
 - **Metric Evaluated:** `matcher_allergen_elimination` (DeepEval G-Eval Score: `1.0`)
-- **DeepEval Judge Reasoning:** The response successfully includes pasta and olive oil in all five suggested recipes, satisfying the first evaluation step. Additionally, none of the listed ingredients (olive oil, various pasta types) fall under the excluded categories of shrimp, crab, lobster, shellfish, tree nuts, or peanuts, thus strictly adhering to the exclusion criteria.
+- **DeepEval Judge Reasoning:** The response successfully includes pasta and olive oil in every suggested recipe, satisfying the first evaluation step. Additionally, none of the listed ingredients (olive oil, various pasta types, spinach, garlic) are shellfish or nuts, strictly adhering to the exclusion criteria in the second step.
 - **System Details:** Strict allergen exclusion: True, Candidates: 5
 
 ### Case 8: 8. Matcher: Strict No-Match Constraint Invariance
@@ -184,5 +184,5 @@ The NOSH Conversational Recipe Intelligence Pipeline was rigorously evaluated us
 ### Case 25: 25. End-to-End: Multi-Turn Dietary Refinement & Context Memory
 - **Component:** `END_TO_END` | **Task:** `End-to-End Pipeline`
 - **Metric Evaluated:** `multi_turn_allergen_safety` (DeepEval G-Eval Score: `1.0`)
-- **DeepEval Judge Reasoning:** The response successfully retains the 'penne pasta' topic from Turn 1 and explicitly acknowledges the dairy restriction from Turn 2 by listing it as an active restriction and filtering results accordingly. All presented dishes are labeled as dairy-free, aligning with the requirement to exclude milk, cheese, butter, or cream.
+- **DeepEval Judge Reasoning:** The response successfully retains the 'penne pasta' topic from Turn 1 and explicitly acknowledges the 'dairy' restriction from Turn 2 by stating that recipes containing dairy have been eliminated. All listed dishes are labeled as 'Verified Ingredients (Dairy-Free)', aligning with the requirement to exclude milk, cheese, butter, or cream.
 - **System Details:** Accumulated restrictions: ['dairy'], Dairy-free verified: True

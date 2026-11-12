@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-12T23:22:49Z",
+  "timestamp": "2026-11-13T00:05:40Z",
   "total_test_cases": 25,
   "passed": 25,
   "pass_rate_percentage": 100.0,
@@ -79,7 +79,7 @@
       "metric": "matcher_allergen_elimination",
       "passed": true,
       "score": 1.0,
-      "reason": "The response successfully includes pasta and olive oil in all five suggested recipes, satisfying the first evaluation step. Additionally, none of the listed ingredients (olive oil, various pasta types) fall under the excluded categories of shrimp, crab, lobster, shellfish, tree nuts, or peanuts, thus strictly adhering to the exclusion criteria.",
+      "reason": "The response successfully includes pasta and olive oil in every suggested recipe, satisfying the first evaluation step. Additionally, none of the listed ingredients (olive oil, various pasta types, spinach, garlic) are shellfish or nuts, strictly adhering to the exclusion criteria in the second step.",
       "details": "Strict allergen exclusion: True, Candidates: 5"
     },
     {
@@ -277,7 +277,7 @@
       "metric": "multi_turn_allergen_safety",
       "passed": true,
       "score": 1.0,
-      "reason": "The response successfully retains the 'penne pasta' topic from Turn 1 and explicitly acknowledges the dairy restriction from Turn 2 by listing it as an active restriction and filtering results accordingly. All presented dishes are labeled as dairy-free, aligning with the requirement to exclude milk, cheese, butter, or cream.",
+      "reason": "The response successfully retains the 'penne pasta' topic from Turn 1 and explicitly acknowledges the 'dairy' restriction from Turn 2 by stating that recipes containing dairy have been eliminated. All listed dishes are labeled as 'Verified Ingredients (Dairy-Free)', aligning with the requirement to exclude milk, cheese, butter, or cream.",
       "details": "Accumulated restrictions: ['dairy'], Dairy-free verified: True"
     }
   ]

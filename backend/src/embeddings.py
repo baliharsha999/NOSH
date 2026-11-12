@@ -9,10 +9,7 @@ Purpose:
   into dense numerical vectors so cosine similarity can be calculated in FAISS.
 
 Architecture:
-  1. `DenseSemanticEmbedder`: Open-source 384-dimensional dense semantic embedding
-     engine implementing LangChain's standard `Embeddings` interface. Projects words,
-     morphological subword n-grams, and semantic tokens into normalized L2 float32 vectors.
-  2. `FastTermEmbeddings`: Zero-dependency 256-dimensional term-frequency / hash vectorizer.
+  Projects words, morphological subword n-grams, and semantic tokens into normalized L2 float32 vectors.
 """
 
 import os
@@ -107,40 +104,3 @@ class DenseSemanticEmbedder(Embeddings):
     def embed_query(self, text: str) -> List[float]:
         """LangChain interface for embedding a single user query."""
         return self.embed_batch([text])[0].tolist()
-
-
-class FastTermEmbeddings(Embeddings):
-    """
-    Lightweight, zero-dependency semantic vector embedder using term-frequency
-    and feature hashing into a normalized 256-dimensional vector space.
-    """
-
-    def __init__(self, dimension: int = 256):
-        self.dimension = dimension
-
-    def _hash_token(self, token: str) -> int:
-        h = 0
-        for ch in token:
-            h = (h * 31 + ord(ch)) % self.dimension
-        return h
-
-    def embed_text(self, text: str) -> List[float]:
-        vec = np.zeros(self.dimension, dtype=np.float32)
-        tokens = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
-        if not tokens:
-            return vec.tolist()
-        for token in tokens:
-            idx = self._hash_token(token)
-            vec[idx] += 1.0
-        non_zero = vec > 0
-        vec[non_zero] = 1.0 + np.log(vec[non_zero])
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec = vec / norm
-        return vec.tolist()
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return [self.embed_text(t) for t in texts]
-
-    def embed_query(self, text: str) -> List[float]:
-        return self.embed_text(text)

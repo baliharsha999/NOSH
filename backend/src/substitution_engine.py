@@ -35,9 +35,14 @@ import re
 from typing import List, Dict, Set, Any, Optional
 from pydantic import BaseModel, Field
 
-from normalization import clean_raw_ingredient, detect_allergens
-from ingestion import RecipeIndexBundle, get_index_bundle
-from web_search_engine import WebSearchEngine, WebSourceCitation
+try:
+    from backend.src.normalization import clean_raw_ingredient, detect_allergens
+    from backend.src.ingestion import RecipeIndexBundle, get_index_bundle
+    from backend.src.web_search_engine import WebSearchEngine, WebSourceCitation
+except ImportError:
+    from normalization import clean_raw_ingredient, detect_allergens
+    from ingestion import RecipeIndexBundle, get_index_bundle
+    from web_search_engine import WebSearchEngine, WebSourceCitation
 
 
 class SubstitutionRequest(BaseModel):
