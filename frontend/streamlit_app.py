@@ -20,6 +20,7 @@ Features:
 import os
 import sys
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -114,15 +115,15 @@ WELCOME_MESSAGE = {
     )
 }
 
-# Initialize Session State
-if "messages" not in st.session_state:
-    st.session_state.messages = [WELCOME_MESSAGE]
+# Initialize Session State (ephemeral active session)
+if "session_id" not in st.session_state:
+    st.session_state.session_id = f"session_{uuid.uuid4().hex[:8]}"
 
 if "thread_id" not in st.session_state:
-    st.session_state.thread_id = "thread_main"
+    st.session_state.thread_id = st.session_state.session_id
 
-if "session_id" not in st.session_state:
-    st.session_state.session_id = st.session_state.thread_id
+if "messages" not in st.session_state:
+    st.session_state.messages = [WELCOME_MESSAGE]
 
 if "active_restrictions" not in st.session_state:
     st.session_state.active_restrictions = []
@@ -149,65 +150,6 @@ def get_local_pipeline():
             bundle = get_index_bundle()
             st.session_state.local_pipeline = NoshPipeline(bundle=bundle)
     return st.session_state.local_pipeline
-
-
-def fetch_threads_list() -> List[Dict[str, Any]]:
-    """Retrieves list of existing threads from backend or local SQLite store."""
-    if check_fastapi_backend():
-        try:
-            r = requests.get(f"{API_BASE_URL}/threads", timeout=2.0)
-            if r.status_code == 200:
-                return r.json()
-        except Exception:
-            pass
-    # Fallback to local session_store
-    try:
-        from session_store import SQLiteSessionStore
-        return SQLiteSessionStore().list_threads()
-    except Exception:
-        return []
-
-
-def load_thread_history(thread_id: str):
-    """Loads historical turns for a specific thread from backend or SQLite database."""
-    turns = []
-    active_restrs = []
-    if check_fastapi_backend():
-        try:
-            r = requests.get(f"{API_BASE_URL}/thread/{thread_id}/history", timeout=2.0)
-            if r.status_code == 200:
-                data = r.json()
-                turns = data.get("history", [])
-                active_restrs = data.get("active_restrictions", [])
-        except Exception:
-            pass
-    else:
-        try:
-            from session_store import SQLiteSessionStore
-            store = SQLiteSessionStore()
-            turns = store.load_turn_history(thread_id)
-            meta = store.get_or_create_thread(thread_id)
-            active_restrs = list(meta.get("accumulated_restrictions", set()))
-        except Exception:
-            pass
-
-    st.session_state.thread_id = thread_id
-    st.session_state.session_id = thread_id
-    st.session_state.active_restrictions = active_restrs
-
-    # Reconstruct messages
-    msgs = [WELCOME_MESSAGE]
-    for turn in turns:
-        msgs.append({
-            "role": "user",
-            "content": turn["user_query"]
-        })
-        msgs.append({
-            "role": "assistant",
-            "content": turn["response_text"],
-            "data": turn.get("structured_data")
-        })
-    st.session_state.messages = msgs
 
 
 def send_chat_message(query: str) -> Dict[str, Any]:
@@ -271,102 +213,55 @@ def clear_restrictions():
 # =============================================================================
 with st.sidebar:
     st.markdown("### 🍳 NOSH Recipe Intelligence")
-    backend_status = check_fastapi_backend()
-    if backend_status:
-        st.success("🟢 Connected to FastAPI (`localhost:8000`)")
-    else:
-        st.info("⚡ Running via Embedded Engine (121,684 recipes)")
+    st.caption("AI Culinary Assistant • 121,684 Curated Recipes")
 
-    # LangSmith & Persistence Status Card
-    st.markdown("---")
-    st.markdown("#### 📡 Tracing & Observability")
-    has_langsmith_key = bool(os.environ.get("LANGCHAIN_API_KEY"))
-    if has_langsmith_key:
-        st.success("🟢 **LangSmith Active**: Tracing to Smith Dashboard")
-    else:
-        st.caption("⚪ **LangSmith Ready**: Set `LANGCHAIN_API_KEY` in `.env` to stream traces.")
-    
-    st.caption("💾 **Memory State**: SQLite (`data_recipes/nosh_sessions.db`)")
+    # 1. Primary Action: Start a Fresh New Chat
+    if st.button("➕ New Chat", use_container_width=True, type="primary"):
+        old_id = st.session_state.get("session_id")
+        # Remove old session from local SQLite store so previous data is not lingering
+        try:
+            from session_store import SQLiteSessionStore
+            store = SQLiteSessionStore()
+            if old_id:
+                store.delete_thread(old_id)
+        except Exception:
+            pass
 
-    # Thread & Session Management
-    st.markdown("---")
-    st.markdown("#### 🧵 Conversation Threads")
-    st.code(f"Active Thread: {st.session_state.thread_id}", language="text")
-
-    col_new, col_reset = st.columns(2)
-    with col_new:
-        if st.button("➕ New Thread", use_container_width=True):
-            new_id = f"thread_{int(time.time())}"
-            st.session_state.thread_id = new_id
-            st.session_state.session_id = new_id
-            st.session_state.active_restrictions = []
-            st.session_state.messages = [WELCOME_MESSAGE]
-            st.rerun()
-
-    # Dropdown to load past threads from SQLite
-    saved_threads = fetch_threads_list()
-    if saved_threads:
-        thread_ids = [t["thread_id"] for t in saved_threads]
-        curr_idx = thread_ids.index(st.session_state.thread_id) if st.session_state.thread_id in thread_ids else 0
-        selected_thread = st.selectbox(
-            "Switch Saved Thread:",
-            options=thread_ids,
-            index=curr_idx,
-            help="Select a saved conversation thread to reload its turn history."
-        )
-        if selected_thread != st.session_state.thread_id:
-            load_thread_history(selected_thread)
-            st.rerun()
+        # Generate fresh session for current user
+        new_id = f"session_{uuid.uuid4().hex[:8]}"
+        st.session_state.session_id = new_id
+        st.session_state.thread_id = new_id
+        st.session_state.messages = [WELCOME_MESSAGE]
+        st.session_state.active_restrictions = []
+        if st.session_state.local_pipeline:
+            sess = st.session_state.local_pipeline.get_session(thread_id=new_id)
+            sess.clear_restrictions()
+        st.rerun()
 
     st.markdown("---")
-    
-    # Active Restrictions State
+
+    # 2. Active Dietary Constraints (User-facing culinary preferences)
     st.markdown("#### 🛡️ Active Dietary Constraints")
     if st.session_state.active_restrictions:
         for r in st.session_state.active_restrictions:
             st.error(f"🚫 Exclusion Enforced: **{r.upper()}**")
-        if st.button("Clear Restrictions", use_container_width=True):
+        if st.button("🧹 Clear Restrictions", use_container_width=True):
             clear_restrictions()
             st.rerun()
     else:
         st.caption("No active restrictions (Pantry neutral).")
 
     st.markdown("---")
-    st.markdown("#### 🕸️ Pipeline Engine")
-    st.caption("⚙️ **Architecture**: LangGraph StateGraph")
-    with st.expander("🔍 View LangGraph Graph Topology"):
-        st.markdown("""
-```mermaid
-graph TD
-    Start([Start]) --> Guardrail[Input Guardrails]
-    Guardrail -->|Blocked| End([End])
-    Guardrail -->|Proceed| Router[Intent Router]
-    Router -->|Analytics| Analytics[Analytics Engine]
-    Router -->|Matching| Matcher[Constraint Matcher]
-    Router -->|Substitution| SubEngine[Substitution Engine]
-    Router -->|Refinement| Refine[Constraint Refinement]
-    Router -->|Search| Search[Vector & Lexical Search]
-    Analytics --> Synthesis[Grounded LLM Synthesis]
-    Matcher --> Synthesis
-    SubEngine --> Synthesis
-    Refine --> Synthesis
-    Search --> Synthesis
-    Synthesis --> OutGuard[Output Guardrails]
-    OutGuard --> End
-```
-""")
 
-    st.markdown("---")
-    st.markdown("### 📋 Quick Test Prompts")
-    
-    # Prompt presets
+    # 3. Suggested Questions (Interactive quick test prompts)
+    st.markdown("### 📋 Suggested Questions")
     presets = [
         ("🧅 Garlic & Onion Co-occurrence %", "How many recipes contain both garlic and onion? What percentage is that?"),
         ("🍅 Tomato Fewest Steps Ranking", "Show me recipes containing tomato ranked by fewest instruction steps"),
         ("🛡️ Negative Guardrail (Prep/Calories)", "What is the prep time and calorie count for recipe 78qGO.ejAdsFEJLRl08hVUjiji9zyG6?"),
         ("🧺 Eggs, Onions, Tomatoes, Rice (≤6 Steps)", "I have eggs, onions, tomatoes, and rice. What can I cook with at most 6 steps? Exclude peanuts."),
         ("🍌 Banana Bread without Eggs (Citations)", "How can I make banana bread without eggs? Cite empirical recipe IDs from the dataset."),
-        ("🌐 Panna Cotta without Gelatin (Web Search Fallback)", "How can I adapt panna cotta without gelatin? If local evidence is inadequate, search the web with structured output."),
+        ("🌐 Panna Cotta without Gelatin (Web Search)", "How can I adapt panna cotta without gelatin? If local evidence is inadequate, search the web with structured output."),
         ("🍝 Turn 1: Find Penne Pasta", "Find a penne pasta recipe"),
         ("🥛 Turn 2: I cannot have dairy", "I cannot have dairy"),
     ]

@@ -487,6 +487,13 @@ def run_full_evaluation():
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("\n".join(md_lines))
     print(f"Saved Markdown audit report to: {md_path}")
+
+    # Clean up evaluation temporary session from SQLite store
+    try:
+        pipeline.session_store.delete_thread(sess_id)
+    except Exception:
+        pass
+
     print("=" * 80 + "\n", flush=True)
 
 
