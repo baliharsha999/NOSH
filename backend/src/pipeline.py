@@ -25,6 +25,7 @@ from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import StreamWriter
 from langsmith import traceable
 
 from ingestion import RecipeIndexBundle, get_index_bundle
@@ -216,17 +217,19 @@ class NoshPipeline:
     # =========================================================================
     # LangGraph Worker Nodes
     # =========================================================================
-    def _node_guardrail(self, state: PipelineState) -> Dict[str, Any]:
+    def _node_guardrail(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
         """Node 1: Evaluates input query against 5-Pillar safety & schema guardrails."""
         user_query = state.get("user_query", "")
         guard_check = NoshGuardrails.check_input_query(user_query)
 
         if not guard_check.passed:
+            msg = guard_check.message or ""
+            writer(msg)
             return {
                 "guardrail_blocked": True,
                 "guardrail_triggered": guard_check.guardrail_name,
                 "intent": "GUARDRAIL_BLOCKED",
-                "response": guard_check.message or "",
+                "response": msg,
                 "data": guard_check.structured_payload
             }
         return {
@@ -234,13 +237,14 @@ class NoshPipeline:
             "guardrail_triggered": None
         }
 
-    def _node_intent_router(self, state: PipelineState) -> Dict[str, Any]:
+    def _node_intent_router(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
         """Node 2: Classifies conversational intent based on user query and linguistic cues."""
         user_query = state.get("user_query", "")
         q = user_query.lower()
 
         # 1. Absence of data check (fallback if not caught in guardrail)
         if any(w in q for w in ["prep time", "preparation time", "calorie", "calories", "nutritional value", "how many calories"]):
+            writer(ABSENCE_OF_DATA_EXPLANATION)
             return {
                 "guardrail_blocked": True,
                 "guardrail_triggered": "AbsenceOfDataGuardrail",
@@ -276,16 +280,30 @@ class NoshPipeline:
 
         # Check for Step Ranking query (e.g. "recipes containing tomato with fewest steps")
         if "fewest" in q_lower or "rank" in q_lower:
-            m = re.search(r"containing\s+([a-zA-Z]+)", q_lower) or re.search(r"with\s+([a-zA-Z]+)", q_lower)
-            ing_target = m.group(1) if m else "tomato"
+            m = re.search(r"containing\s+([a-zA-Z]+)", q_lower)
+            if m:
+                ing_target = m.group(1)
+            else:
+                m_with = re.search(r"with\s+([a-zA-Z]+)", q_lower)
+                if m_with and m_with.group(1) not in ["fewest", "steps", "least", "most", "fewer"]:
+                    ing_target = m_with.group(1)
+                else:
+                    for cand in ["tomato", "tomatoes", "garlic", "onion", "chicken", "beef", "potato", "pasta", "rice", "egg", "eggs"]:
+                        if cand in q_lower:
+                            ing_target = cand
+                            break
+                    else:
+                        ing_target = "tomato"
+
             stats_res = self.analytics.rank_by_instruction_steps(ing_target, top_k=5, ascending=True)
+            total_matches = stats_res.get("total_matching_recipes", stats_res.get("matching_recipes_found", 0))
 
             resp_lines = [
                 f"**Ranking by Instruction Steps for '{ing_target}' (Fewest Steps First):**",
-                f"- **Total matching recipes:** {stats_res['total_matching_recipes']:,} in curated dataset",
-                f"- **Step-counting rule:** {stats_res['step_counting_rule']}\n"
+                f"- **Total matching recipes:** {total_matches:,} in curated dataset",
+                f"- **Step-counting rule:** {stats_res.get('step_counting_rule', 'Newline instruction segmentation')}\n"
             ]
-            for idx, r in enumerate(stats_res["results"], 1):
+            for idx, r in enumerate(stats_res.get("results", []), 1):
                 resp_lines.append(f"{idx}. **{r['title']}** (ID: `{r['id']}`) — **{r['num_steps']} step(s)**, {r['num_ingredients']} ingredient(s)")
 
             return {
@@ -553,8 +571,8 @@ class NoshPipeline:
             "fallback_text": "\n".join(resp_lines)
         }
 
-    def _node_synthesis(self, state: PipelineState) -> Dict[str, Any]:
-        """Node 4: Grounded LLM synthesis using Groq Qwen 2.5 with deterministic fallback."""
+    def _node_synthesis(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
+        """Node 4: Grounded LLM synthesis using Groq Qwen 2.5 with live LangGraph token streaming."""
         user_query = state.get("user_query", "")
         intent = state.get("intent", "SEARCH")
         context_data = state.get("context_data") or {}
@@ -562,25 +580,42 @@ class NoshPipeline:
         use_llm = state.get("use_llm", True)
 
         if use_llm and self.llm.is_available():
-            synthesized = self.llm.synthesize(
+            tokens = []
+            for token in self.llm.stream_synthesize(
                 user_query=user_query,
                 intent=intent,
                 context_data=context_data,
                 raw_fallback_response=fallback_text
-            )
-            return {"response": synthesized}
+            ):
+                tokens.append(token)
+                writer(token)
+            synthesized = "".join(tokens).strip()
+            return {"response": synthesized or fallback_text}
+
+        # Offline or LLM-disabled fallback: stream words smoothly
+        words = fallback_text.split(" ")
+        for i, w in enumerate(words):
+            chunk = w + (" " if i < len(words) - 1 else "")
+            writer(chunk)
         return {"response": fallback_text}
 
-    def _node_output_guardrail(self, state: PipelineState) -> Dict[str, Any]:
+    def _node_output_guardrail(self, state: PipelineState, writer: StreamWriter) -> Dict[str, Any]:
         """Node 5: Validates output compliance, ensuring disclaimers and notices are present."""
         response = state.get("response", "")
         intent = state.get("intent", "")
 
+        appended_notice = ""
         if intent == "SUBSTITUTION":
-            response = NoshGuardrails.attach_medical_disclaimer(response, is_substitution=True)
+            if MEDICAL_DISCLAIMER not in response:
+                appended_notice = f"\n\n> ⚠️ *{MEDICAL_DISCLAIMER}*"
+                response = response + appended_notice
+        elif intent == "MATCHING":
+            if QUANTITY_SUFFICIENCY_NOTICE not in response:
+                appended_notice = f"\n\n> *{QUANTITY_SUFFICIENCY_NOTICE}*"
+                response = response + appended_notice
 
-        if intent == "MATCHING":
-            response = NoshGuardrails.attach_quantity_notice(response)
+        if appended_notice:
+            writer(appended_notice)
 
         return {"response": response}
 
@@ -653,6 +688,85 @@ class NoshPipeline:
             "active_restrictions": list(session.accumulated_restrictions),
             "data": final_state.get("data")
         }
+
+    def stream_query(
+        self,
+        user_query: str,
+        session_id: str = "default",
+        thread_id: Optional[str] = None,
+        use_llm: bool = True
+    ):
+        """
+        Executes a single conversational turn through the compiled LangGraph StateGraph,
+        streaming tokens and node state updates in real time using LangGraph's native stream.
+
+        Yields:
+          - ("token", str): Token delta from StreamWriter as the LLM generates.
+          - ("node_update", dict): Node-level state updates as nodes finish.
+          - ("complete", dict): Final turn dictionary with response, data, active restrictions.
+        """
+        tid = (thread_id or session_id or "default").strip()
+        session = self.get_session(thread_id=tid)
+
+        initial_state: PipelineState = {
+            "thread_id": session.thread_id,
+            "session_id": session.session_id,
+            "user_query": user_query,
+            "active_search_query": session.active_search_query,
+            "accumulated_restrictions": list(session.accumulated_restrictions),
+            "use_llm": use_llm,
+            "guardrail_blocked": False,
+            "guardrail_triggered": None,
+            "intent": "",
+            "context_data": None,
+            "data": None,
+            "fallback_text": "",
+            "response": ""
+        }
+
+        accumulated_state: Dict[str, Any] = dict(initial_state)
+
+        for mode, chunk in self.graph.stream(
+            initial_state,
+            stream_mode=["updates", "custom"]
+        ):
+            if mode == "custom":
+                yield ("token", chunk)
+            elif mode == "updates":
+                for node_name, node_update in chunk.items():
+                    accumulated_state.update(node_update)
+                    yield ("node_update", {node_name: node_update})
+
+        final_response = accumulated_state.get("response", "")
+        final_intent = accumulated_state.get("intent", "UNKNOWN")
+        final_data = accumulated_state.get("data")
+        guard_name = accumulated_state.get("guardrail_triggered")
+
+        # Synchronize multi-turn state back to ConversationalSession
+        session.active_search_query = accumulated_state.get("active_search_query", session.active_search_query)
+        session.accumulated_restrictions = set(accumulated_state.get("accumulated_restrictions", session.accumulated_restrictions))
+
+        # Save turn to SQLite session store
+        self.session_store.save_turn(
+            thread_id=session.thread_id,
+            user_query=user_query,
+            intent_detected=final_intent,
+            response_text=final_response,
+            structured_data=final_data,
+            active_search_query=session.active_search_query,
+            accumulated_restrictions=session.accumulated_restrictions
+        )
+
+        final_result = {
+            "thread_id": session.thread_id,
+            "session_id": session.thread_id,
+            "intent": final_intent,
+            "response": final_response,
+            "guardrail_triggered": guard_name,
+            "active_restrictions": list(session.accumulated_restrictions),
+            "data": final_data
+        }
+        yield ("complete", final_result)
 
 
 # =============================================================================

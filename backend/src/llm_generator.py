@@ -82,6 +82,54 @@ Adhere strictly to the ground truth provided above. Do not hallucinate numbers o
             print(f"[LLMGenerator] Error during LLM generation: {e}. Falling back to deterministic response.")
             return raw_fallback_response
 
+    def stream_synthesize(
+        self,
+        user_query: str,
+        intent: str,
+        context_data: Dict[str, Any],
+        raw_fallback_response: str
+    ):
+        """
+        Streams natural, grounded culinary response tokens using Groq Cloud LLM (stream=True).
+        Yields string token deltas in real-time.
+        Falls back to yielding words from raw_fallback_response if LLM fails or is unavailable.
+        """
+        if not self.is_available():
+            words = raw_fallback_response.split(" ")
+            for i, w in enumerate(words):
+                yield w + (" " if i < len(words) - 1 else "")
+            return
+
+        user_prompt = f"""User Request: "{user_query}"
+Detected Intent: {intent}
+
+Deterministic Context & Ground Truth from Local Dataset:
+{self._format_context_for_llm(intent, context_data, raw_fallback_response)}
+
+Instructions:
+Provide a polished, helpful, and natural response directly answering the user query.
+Adhere strictly to the ground truth provided above. Do not hallucinate numbers or unverified steps.
+"""
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.2,
+                max_tokens=850,
+                stream=True
+            )
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            print(f"[LLMGenerator] Error during streaming: {e}. Falling back to deterministic response.")
+            words = raw_fallback_response.split(" ")
+            for i, w in enumerate(words):
+                yield w + (" " if i < len(words) - 1 else "")
+
     def _format_context_for_llm(self, intent: str, context_data: Dict[str, Any], fallback_text: str) -> str:
         """
         Structures the context dictionary cleanly into text for the LLM.

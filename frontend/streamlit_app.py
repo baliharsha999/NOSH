@@ -20,6 +20,7 @@ Features:
 import os
 import sys
 import time
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -187,6 +188,50 @@ def send_chat_message(query: str) -> Dict[str, Any]:
         "active_restrictions": list(sess.accumulated_restrictions),
         "data": result.get("data")
     }
+
+
+def stream_chat_response(query: str):
+    """
+    Streams conversational response tokens using LangGraph StateGraph stream.
+    Yields (event_type, payload) tuples for real-time live token rendering.
+    """
+    current_tid = st.session_state.thread_id
+    is_backend_up = check_fastapi_backend()
+
+    if is_backend_up:
+        try:
+            payload = {
+                "message": query,
+                "session_id": current_tid,
+                "thread_id": current_tid,
+                "use_llm": True
+            }
+            res = requests.post(
+                f"{API_BASE_URL}/chat/stream",
+                json=payload,
+                stream=True,
+                timeout=45.0
+            )
+            if res.status_code == 200:
+                for line in res.iter_lines():
+                    if line:
+                        decoded = line.decode("utf-8")
+                        if decoded.startswith("data: "):
+                            event_obj = json.loads(decoded[6:])
+                            yield (event_obj.get("event"), event_obj.get("data"))
+                return
+        except Exception:
+            pass
+
+    # Embedded LangGraph Pipeline Streaming
+    pipe = get_local_pipeline()
+    for evt_type, evt_data in pipe.stream_query(
+        user_query=query,
+        session_id=current_tid,
+        thread_id=current_tid,
+        use_llm=True
+    ):
+        yield (evt_type, evt_data)
 
 
 def clear_restrictions():
@@ -376,21 +421,32 @@ if user_prompt:
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    # 2. Query backend
+    # 2. Stream assistant response with LangGraph StateGraph stream
     with st.chat_message("assistant"):
-        with st.spinner("Thinking & querying 121,684 recipe index..."):
-            backend_res = send_chat_message(user_prompt)
-            resp_content = backend_res.get("response", "No response generated.")
-            data_payload = backend_res.get("data")
-            guard_name = backend_res.get("guardrail_triggered")
-            
-            st.markdown(resp_content)
+        final_meta = {}
 
-            # Store in session state
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": resp_content,
-                "guardrail_triggered": guard_name,
-                "data": data_payload
-            })
-            st.rerun()
+        def token_stream():
+            for evt_type, evt_data in stream_chat_response(user_prompt):
+                if evt_type == "token":
+                    yield evt_data
+                elif evt_type == "complete":
+                    final_meta.update(evt_data)
+
+        # Streams tokens in real-time with smooth typewriter effect
+        streamed_response = st.write_stream(token_stream())
+
+        resp_content = streamed_response or final_meta.get("response", "No response generated.")
+        data_payload = final_meta.get("data")
+        guard_name = final_meta.get("guardrail_triggered")
+        active_restrs = final_meta.get("active_restrictions", [])
+        if active_restrs:
+            st.session_state.active_restrictions = active_restrs
+
+        # Store in session state for persistent interactive history
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": resp_content,
+            "guardrail_triggered": guard_name,
+            "data": data_payload
+        })
+        st.rerun()

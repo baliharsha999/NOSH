@@ -17,10 +17,12 @@ Provides REST and Conversational API endpoints:
 
 import os
 import sys
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -144,6 +146,29 @@ def chat_endpoint(req: ChatRequest):
         "active_restrictions": list(session.accumulated_restrictions),
         "data": result.get("data")
     }
+
+
+@app.post("/api/chat/stream", tags=["Conversational Assistant"])
+def chat_stream_endpoint(req: ChatRequest):
+    """
+    Streams multi-turn conversational responses token-by-token using LangGraph StateGraph stream.
+    Emits Server-Sent Events (SSE) in real time to decrease latency and optimize UX.
+    """
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    effective_thread_id = req.thread_id or req.session_id or "default"
+
+    def event_generator():
+        for event_type, payload in pipeline.stream_query(
+            user_query=req.message,
+            session_id=effective_thread_id,
+            thread_id=effective_thread_id,
+            use_llm=req.use_llm
+        ):
+            yield f"data: {json.dumps({'event': event_type, 'data': payload})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/api/pipeline/graph", tags=["Pipeline Architecture"])
